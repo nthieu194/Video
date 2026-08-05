@@ -1,0 +1,281 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net Default Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation helper for UserProfile entity
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'email', 'tier', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 5 && data.keys().size() <= 12
+        && data.userId is string && data.userId == request.auth.uid
+        && data.email is string && data.email.size() <= 256
+        && data.tier is string && (data.tier == 'free' || data.tier == 'mini' || data.tier == 'standard' || data.tier == 'vip')
+        && data.createdAt is string && data.createdAt.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 200;
+    }
+
+    // Validation helper for UserProfile system-level bypass update
+    function isValidUserProfileSystem(data) {
+      return data.keys().hasAll(['userId', 'tier', 'systemToken'])
+        && data.userId is string
+        && data.tier is string && (data.tier == 'free' || data.tier == 'mini' || data.tier == 'standard' || data.tier == 'vip')
+        && data.systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN';
+    }
+
+    // Validation helper for Transaction entity
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['transactionId', 'userId', 'amount', 'status', 'systemToken'])
+        && data.transactionId is string
+        && data.userId is string
+        && data.amount is number
+        && data.status is string
+        && data.systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN';
+    }
+
+    // Validation helper for a VideoScript entity
+    function isValidVideoScript(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'title', 'originalIdea', 'style', 'targetAudience', 
+        'duration', 'tone', 'scenes', 'trendAnalysis', 'suggestedHashtags', 
+        'productionTips', 'createdAt', 'updatedAt'
+      ])
+        && data.keys().size() >= 14 && data.keys().size() <= 17
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 1000
+        && data.originalIdea is string && data.originalIdea.size() > 0 && data.originalIdea.size() <= 20000
+        && data.style is string && data.style.size() <= 200
+        && data.targetAudience is string && data.targetAudience.size() <= 2000
+        && data.duration is number && data.duration > 0 && data.duration <= 3600
+        && data.tone is string && data.tone.size() <= 1000
+        && data.trendAnalysis is string && data.trendAnalysis.size() <= 15000
+        && data.suggestedHashtags is list && data.suggestedHashtags.size() <= 100
+        && data.productionTips is list && data.productionTips.size() <= 100
+        && data.scenes is list && data.scenes.size() >= 0 && data.scenes.size() <= 100
+        && (!data.keys().hasAny(['reviewIndustry']) || data.reviewIndustry == null || (data.reviewIndustry is string && data.reviewIndustry.size() <= 500))
+        && data.createdAt is string && data.createdAt.size() > 0 && data.createdAt.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() > 0 && data.updatedAt.size() <= 200;
+    }
+
+    // Validation helper for SeriesPlan entity
+    function isValidSeriesPlan(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'title', 'description', 'topic', 'episodesCount', 
+        'targetAudience', 'tone', 'style', 'bulletPoints', 'episodes', 
+        'createdAt', 'updatedAt'
+      ])
+        && data.keys().size() >= 13 && data.keys().size() <= 15
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 1000
+        && data.description is string && data.description.size() <= 5000
+        && data.topic is string && data.topic.size() <= 1000
+        && data.episodesCount is number && data.episodesCount >= 0
+        && data.targetAudience is string && data.targetAudience.size() <= 2000
+        && data.tone is string && data.tone.size() <= 1000
+        && data.style is string && data.style.size() <= 500
+        && data.bulletPoints is list && data.bulletPoints.size() <= 100
+        && data.episodes is list && data.episodes.size() <= 100
+        && (!data.keys().hasAny(['keywords']) || data.keywords == null || (data.keywords is string && data.keywords.size() <= 1000))
+        && data.createdAt is string && data.createdAt.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 200;
+    }
+
+    // Validation helper for MediaItem entity
+    function isValidMediaItem(data) {
+      return data.keys().hasAll(['id', 'userId', 'url', 'prompt', 'isFavorite', 'category', 'createdAt'])
+        && data.keys().size() >= 7 && data.keys().size() <= 12
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.url is string && data.url.size() <= 15000000
+        && data.prompt is string && data.prompt.size() <= 5000
+        && data.isFavorite is bool
+        && data.category is string && data.category.size() <= 100
+        && (!data.keys().hasAny(['sceneIndex']) || data.sceneIndex == null || data.sceneIndex is number)
+        && (!data.keys().hasAny(['scriptId']) || data.scriptId == null || (data.scriptId is string && data.scriptId.size() <= 128))
+        && (!data.keys().hasAny(['scriptTitle']) || data.scriptTitle == null || (data.scriptTitle is string && data.scriptTitle.size() <= 1000))
+        && data.createdAt is string && data.createdAt.size() <= 200;
+    }
+
+    // Validation helper for VoiceSample entity
+    function isValidVoiceSample(data) {
+      return data.keys().hasAll(['voiceId', 'audioBase64', 'mimeType', 'createdAt'])
+        && data.keys().size() >= 4 && data.keys().size() <= 5
+        && data.voiceId is string && data.voiceId.size() <= 128
+        && data.audioBase64 is string && data.audioBase64.size() <= 10000000
+        && data.mimeType is string && data.mimeType.size() <= 100
+        && (!data.keys().hasAny(['sampleText']) || data.sampleText == null || (data.sampleText is string && data.sampleText.size() <= 20000))
+        && data.createdAt is string && data.createdAt.size() <= 200;
+    }
+
+    // Validation helper for SegmentAudio entity
+    function isValidSegmentAudio(data) {
+      return data.keys().hasAll(['audioId', 'scriptId', 'segmentIndex', 'audioBase64', 'createdAt', 'userId'])
+        && data.keys().size() >= 6 && data.keys().size() <= 7
+        && data.audioId is string && data.audioId.size() <= 128
+        && data.scriptId is string && data.scriptId.size() <= 128
+        && data.segmentIndex is number && data.segmentIndex >= 0
+        && data.audioBase64 is string && data.audioBase64.size() <= 10000000
+        && data.userId is string && data.userId == request.auth.uid
+        && (!data.keys().hasAny(['id']) || data.id is string && data.id.size() <= 128)
+        && data.createdAt is string && data.createdAt.size() <= 200;
+    }
+
+    // Validation helper for ProductAnalysis entity
+    function isValidProductAnalysis(data) {
+      return data.keys().hasAll([
+        'id', 'userId', 'productName', 'summary', 'features', 'benefits', 
+        'pros', 'cons', 'createdAt', 'updatedAt'
+      ])
+        && data.keys().size() >= 10 && data.keys().size() <= 13
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.productName is string && data.productName.size() <= 1000
+        && (!data.keys().hasAny(['productDescription']) || data.productDescription == null || (data.productDescription is string && data.productDescription.size() <= 5000))
+        && data.summary is string && data.summary.size() <= 15000
+        && data.features is list && data.features.size() <= 100
+        && data.benefits is list && data.benefits.size() <= 100
+        && data.pros is list && data.pros.size() <= 100
+        && data.cons is list && data.cons.size() <= 100
+        && (!data.keys().hasAny(['consumerValue']) || data.consumerValue == null || (data.consumerValue is list && data.consumerValue.size() <= 100))
+        && data.createdAt is string && data.createdAt.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 200;
+    }
+
+    // Validation helper for PrompterDialogue entity
+    function isValidPrompterDialogue(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'content', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 6 && data.keys().size() <= 11
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 1000
+        && data.content is string && data.content.size() <= 20000
+        && (!data.keys().hasAny(['style']) || data.style is string)
+        && (!data.keys().hasAny(['tone']) || data.tone is string)
+        && (!data.keys().hasAny(['audience']) || data.audience is string)
+        && (!data.keys().hasAny(['duration']) || data.duration is number)
+        && data.createdAt is string && data.createdAt.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 200;
+    }
+
+    // Collection: Users (User Profile)
+    match /users/{userId} {
+      allow get, list: if true;
+      allow create: if (isSignedIn() && userId == request.auth.uid && isValidUserProfile(incoming()))
+                    || (incoming().keys().hasAny(['systemToken']) && incoming().systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN');
+      allow update: if (isSignedIn() && userId == request.auth.uid && isValidUserProfile(incoming()) && incoming().userId == existing().userId)
+                    || (incoming().keys().hasAny(['systemToken']) && incoming().systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN');
+      allow delete: if isSignedIn() && userId == request.auth.uid;
+    }
+
+    // Collection: Transactions (Payment Audit)
+    match /transactions/{transactionId} {
+      allow get, list: if true;
+      allow create: if (incoming().keys().hasAny(['systemToken']) && incoming().systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN')
+                    || isValidTransaction(incoming());
+      allow update: if incoming().keys().hasAny(['systemToken']) && incoming().systemToken == 'CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN';
+    }
+
+    // Collection: Payment Requests (Manual Verification)
+    match /payment_requests/{requestId} {
+      allow get, list, create, update, delete: if true;
+    }
+
+    // Collection: Webhook Logs (System Debugging & Monitoring)
+    match /webhook_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Collection: Scripts (Video Scripts)
+    match /scripts/{scriptId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(scriptId) && isValidVideoScript(incoming());
+      allow update: if isSignedIn() && isValidId(scriptId) && isValidVideoScript(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Series Plans (Series Planner)
+    match /series_plans/{seriesId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(seriesId) && isValidSeriesPlan(incoming());
+      allow update: if isSignedIn() && isValidId(seriesId) && isValidSeriesPlan(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Media Items (Media Library)
+    match /media_items/{mediaId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(mediaId) && isValidMediaItem(incoming());
+      allow update: if isSignedIn() && isValidId(mediaId) && isValidMediaItem(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Voice Samples (Shared Voice Sample Cache)
+    match /voice_samples/{voiceId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(voiceId) && isValidVoiceSample(incoming());
+      allow update: if isSignedIn() && isValidId(voiceId) && isValidVoiceSample(incoming()) && incoming().voiceId == existing().voiceId;
+      allow delete: if isSignedIn();
+    }
+
+    // Collection: Segment Audios (Video Scripts segment audios)
+    match /segment_audios/{audioId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(audioId) && isValidSegmentAudio(incoming());
+      allow update: if isSignedIn() && isValidId(audioId) && isValidSegmentAudio(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Product Analyses (Saved product analysis reports)
+    match /product_analyses/{analysisId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(analysisId) && isValidProductAnalysis(incoming());
+      allow update: if isSignedIn() && isValidId(analysisId) && isValidProductAnalysis(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Prompter Dialogues (Saved prompter speech texts)
+    match /prompter_dialogues/{dialogueId} {
+      allow read: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(dialogueId) && isValidPrompterDialogue(incoming());
+      allow update: if isSignedIn() && isValidId(dialogueId) && isValidPrompterDialogue(incoming()) && incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // Compatibility rule matchers for additional fields if requested
+    match /{collectionId}/{fieldId} {
+      allow read: if collectionId.matches('^ideabank_fields(_[a-zA-Z0-9_]+)?$');
+      allow write: if isSignedIn() && collectionId.matches('^ideabank_fields(_[a-zA-Z0-9_]+)?$');
+    }
+
+    match /ideabank_saved_ideas/{ideaId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if isSignedIn() && (request.resource == null || request.resource.data.userId == request.auth.uid);
+    }
+
+    // Connection diagnostics
+    match /test/{docId} {
+      allow read: if true;
+    }
+  }
+}

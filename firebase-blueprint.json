@@ -1,0 +1,217 @@
+{
+  "entities": {
+    "Scene": {
+      "title": "Scene",
+      "description": "A single detailed scene of a short video script",
+      "type": "object",
+      "properties": {
+        "timeRange": { "type": "string", "description": "e.g., 00:00 - 00:05" },
+        "visualDescription": { "type": "string", "description": "Visual actions, camera angle and blocking details" },
+        "dialogue": { "type": "string", "description": "The exact script or voiceover dialogue" },
+        "illustrationPrompt": { "type": "string", "description": "Detailed English prompt for AI image generation of this scene" },
+        "audioSuggestion": { "type": "string", "description": "Audio background music or sound effects suggestions (SFX)" }
+      },
+      "required": ["timeRange", "visualDescription", "dialogue", "illustrationPrompt", "audioSuggestion"]
+    },
+    "VideoScript": {
+      "title": "VideoScript",
+      "description": "A complete generated content strategy and script for a short video",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string", "description": "The authenticated creator's user identifier" },
+        "title": { "type": "string" },
+        "originalIdea": { "type": "string" },
+        "style": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "duration": { "type": "number" },
+        "tone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "trendAnalysis": { "type": "string" },
+        "suggestedHashtags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "productionTips": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scenes": {
+          "type": "array",
+          "items": { "$ref": "#/entities/Scene" }
+        }
+      },
+      "required": ["id", "userId", "title", "originalIdea", "style", "targetAudience", "duration", "tone", "trendAnalysis", "suggestedHashtags", "productionTips", "scenes", "createdAt", "updatedAt"]
+    },
+    "SeriesEpisode": {
+      "title": "SeriesEpisode",
+      "description": "A single episode of a multi-episode video plan series",
+      "type": "object",
+      "properties": {
+        "episodeNumber": { "type": "number" },
+        "title": { "type": "string" },
+        "visualDescription": { "type": "string" },
+        "dialogueOutline": { "type": "string" },
+        "status": { "type": "string", "enum": ["planned", "script_generated", "completed"] },
+        "publishDate": { "type": "string" },
+        "scriptId": { "type": "string" }
+      },
+      "required": ["episodeNumber", "title", "visualDescription", "dialogueOutline", "status", "publishDate"]
+    },
+    "SeriesPlan": {
+      "title": "SeriesPlan",
+      "description": "A complete multi-episode content plan serial or script campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "topic": { "type": "string" },
+        "episodesCount": { "type": "number" },
+        "targetAudience": { "type": "string" },
+        "tone": { "type": "string" },
+        "style": { "type": "string" },
+        "bulletPoints": { "type": "array", "items": { "type": "string" } },
+        "episodes": { "type": "array", "items": { "$ref": "#/entities/SeriesEpisode" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "description", "topic", "episodesCount", "targetAudience", "tone", "style", "bulletPoints", "episodes", "createdAt", "updatedAt"]
+    },
+    "MediaItem": {
+      "title": "MediaItem",
+      "description": "An image item in the content-creator's library",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "url": { "type": "string" },
+        "prompt": { "type": "string" },
+        "sceneIndex": { "type": "number" },
+        "scriptId": { "type": "string" },
+        "scriptTitle": { "type": "string" },
+        "isFavorite": { "type": "boolean" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "url", "prompt", "isFavorite", "category", "createdAt"]
+    },
+    "VoiceSample": {
+      "title": "VoiceSample",
+      "description": "Pre-generated and cached base64 audio sample for 3-region premium voices",
+      "type": "object",
+      "properties": {
+        "voiceId": { "type": "string" },
+        "audioBase64": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["voiceId", "audioBase64", "mimeType", "createdAt"]
+    },
+    "SegmentAudio": {
+      "title": "SegmentAudio",
+      "description": "Store and sync dubbed/voiceacted segment audio to cloud storage/Firestore",
+      "type": "object",
+      "properties": {
+        "audioId": { "type": "string" },
+        "scriptId": { "type": "string" },
+        "segmentIndex": { "type": "number" },
+        "audioBase64": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["audioId", "scriptId", "segmentIndex", "audioBase64", "createdAt", "userId"]
+    },
+    "ProductAnalysis": {
+      "title": "ProductAnalysis",
+      "description": "Store saved in-depth product analysis reports",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "productName": { "type": "string" },
+        "productDescription": { "type": "string" },
+        "summary": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "benefits": { "type": "array", "items": { "type": "string" } },
+        "pros": { "type": "array", "items": { "type": "string" } },
+        "cons": { "type": "array", "items": { "type": "string" } },
+        "consumerValue": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "productName", "summary", "features", "benefits", "pros", "cons", "createdAt", "updatedAt"]
+    },
+    "PrompterDialogue": {
+      "title": "PrompterDialogue",
+      "description": "Store saved prompter/co-authored dialogues and texts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "style": { "type": "string" },
+        "tone": { "type": "string" },
+        "audience": { "type": "string" },
+        "duration": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "content", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with commercial subscription tier and daily quotas",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "tier": { "type": "string", "enum": ["free", "standard", "vip"] },
+        "scriptCountToday": { "type": "number" },
+        "voiceCountToday": { "type": "number" },
+        "imageCountToday": { "type": "number" },
+        "lastQuotaReset": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "tier", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Store user profile, subscription plan and daily usage quota counts"
+    },
+    "/scripts/{scriptId}": {
+      "schema": "VideoScript",
+      "description": "Store user video kịch bản details safely"
+    },
+    "/series_plans/{seriesId}": {
+      "schema": "SeriesPlan",
+      "description": "Store multi-episode series content plans"
+    },
+    "/media_items/{mediaId}": {
+      "schema": "MediaItem",
+      "description": "Store indexed media and reference images"
+    },
+    "/voice_samples/{voiceId}": {
+      "schema": "VoiceSample",
+      "description": "Store cached 3-region premium voice samples to prevent duplicate API requests"
+    },
+    "/segment_audios/{audioId}": {
+      "schema": "SegmentAudio",
+      "description": "Store dubbed audio per kịch bản segment"
+    },
+    "/product_analyses/{analysisId}": {
+      "schema": "ProductAnalysis",
+      "description": "Store saved product analysis reports"
+    },
+    "/prompter_dialogues/{dialogueId}": {
+      "schema": "PrompterDialogue",
+      "description": "Store prompter/co-authored dialogues and speech texts"
+    }
+  }
+}

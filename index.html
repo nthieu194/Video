@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+    <script>
+      // Prevent global ReferenceError for EmptyRanges in headless WebKit/automated running environments
+      if (typeof window !== 'undefined' && !('EmptyRanges' in window)) {
+        window.EmptyRanges = class EmptyRanges {
+          constructor() {
+            this.length = 0;
+          }
+          [Symbol.iterator]() {
+            return {
+              next() {
+                return { value: undefined, done: true };
+              }
+            };
+          }
+        };
+      }
+      if (typeof window !== 'undefined') {
+        var EmptyRanges = window.EmptyRanges;
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

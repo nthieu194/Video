@@ -1,0 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: #FF3B5C;
+  --color-brand-secondary: #00F2EA;
+  --color-brand-dark: #1A1B2E;
+  --color-brand-light: #F0F2F5;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #F0F2F5;
+  color: #1A1B2E;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+.glow-primary {
+  box-shadow: 0 4px 15px rgba(255, 59, 92, 0.3);
+}
+
+.glow-secondary {
+  box-shadow: 0 4px 15px rgba(0, 242, 234, 0.2);
+}
+
+@keyframes karaoke-wipe {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+.karaoke-line {
+  display: block;
+  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transition: background-position 0.2s linear, transform 0.3s ease;
+  transform-origin: left center;
+}
+
+.karaoke-word {
+  display: inline-block;
+  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transition: transform 0.2s ease;
+  white-space: pre;
+}
+
+.karaoke-word.completed {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: #00F2EA !important;
+  color: #00F2EA !important;
+}
+
+.karaoke-word.active-wipe {
+  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%) !important;
+  background-size: 200% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: karaoke-wipe var(--word-duration, 0.3s) linear forwards !important;
+  animation-delay: var(--word-delay, 0s) !important;
+}
+
+.karaoke-word.inactive {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.3) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.karaoke-line.completed {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: #00F2EA !important;
+  color: #00F2EA !important;
+}
+
+.karaoke-line.active {
+  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%) !important;
+  background-size: 200% 100% !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  animation: karaoke-wipe var(--karaoke-duration, 4s) linear forwards !important;
+  transform: scale(1.05);
+}
+
+.karaoke-line.inactive {
+  background-image: none !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.3) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
+}
+

@@ -1,0 +1,11 @@
+{
+  "name": "Video",
+  "description": "Ứng dụng xây dựng và quản lý kịch bản video ngắn tự động sử dụng AI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
