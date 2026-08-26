@@ -176,7 +176,7 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
         "AI Lồng Tiếng cơ bản: 2 lượt/ngày",
         "AI Vẽ Ảnh minh họa: 1 ảnh/ngày",
         "Không hỗ trợ xuất Google Docs",
-        "Chèn watermark ClipFlow & hiển thị quảng cáo"
+        "Chèn watermark ClipViral & hiển thị quảng cáo"
       ]
     },
     mini: {
@@ -916,7 +916,7 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
                       Giao dịch thành công!
                     </h3>
                     <p className="text-sm text-slate-300 max-w-md mx-auto">
-                      Cảm ơn bạn đã nâng cấp gói dịch vụ sáng tạo tại ClipFlow AI! Tài khoản của bạn đã được nâng cấp tức thì.
+                      Cảm ơn bạn đã nâng cấp gói dịch vụ sáng tạo tại ClipViral! Tài khoản của bạn đã được nâng cấp tức thì.
                     </p>
                   </div>
 
@@ -1115,8 +1115,8 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
                               <div className="bg-white rounded-2xl p-4 inline-block shadow-lg mx-auto relative overflow-hidden border border-slate-200">
                                 {/* Render QR code via open vietqr api */}
                                 <img 
-                                  src={`https://img.vietqr.io/image/mbbank-0363798989-print.png?amount=${PLANS[selectedPlan].priceNum}&addInfo=CLIPFLOW%20${selectedPlan.toUpperCase()}%20${userId}&accountName=NGUYEN%20TRONG%20HIEU`}
-                                  alt="VietQR ClipFlow Payment" 
+                                  src={`https://img.vietqr.io/image/mbbank-0363798989-print.png?amount=${PLANS[selectedPlan].priceNum}&addInfo=CLIPVIRAL%20${selectedPlan.toUpperCase()}%20${userId}&accountName=NGUYEN%20TRONG%20HIEU`}
+                                  alt="VietQR ClipViral Payment" 
                                   className="w-[200px] h-[200px] object-contain mx-auto"
                                 />
                                 <div className="text-[8px] text-slate-500 mt-1 font-bold tracking-wider font-mono">QUÉT ĐỂ TỰ ĐỘNG ĐIỀN THÔNG TIN</div>

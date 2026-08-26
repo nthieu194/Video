@@ -131,13 +131,14 @@ service cloud.firestore {
     // Validation helper for SegmentAudio entity
     function isValidSegmentAudio(data) {
       return data.keys().hasAll(['audioId', 'scriptId', 'segmentIndex', 'audioBase64', 'createdAt', 'userId'])
-        && data.keys().size() >= 6 && data.keys().size() <= 7
+        && data.keys().size() >= 6 && data.keys().size() <= 9
         && data.audioId is string && data.audioId.size() <= 128
         && data.scriptId is string && data.scriptId.size() <= 128
         && data.segmentIndex is number && data.segmentIndex >= 0
-        && data.audioBase64 is string && data.audioBase64.size() <= 10000000
+        && data.audioBase64 is string && data.audioBase64.size() <= 1000000
         && data.userId is string && data.userId == request.auth.uid
         && (!data.keys().hasAny(['id']) || data.id is string && data.id.size() <= 128)
+        && (!data.keys().hasAny(['audioUrl']) || (data.audioUrl is string && data.audioUrl.size() <= 1000000))
         && data.createdAt is string && data.createdAt.size() <= 200;
     }
 

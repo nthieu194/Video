@@ -1,11 +1,11 @@
 import { VideoScript } from '../types';
 
 /**
- * Searches for or creates a folder called 'ClipFlow - Kịch Bản Video' in Google Drive.
+ * Searches for or creates a folder called 'ClipViral - Kịch Bản Video' in Google Drive.
  * Returns the folder ID.
  */
 export async function getOrCreateFolder(accessToken: string): Promise<string> {
-  const query = encodeURIComponent("name = 'ClipFlow - Kịch Bản Video' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+  const query = encodeURIComponent("name = 'ClipViral - Kịch Bản Video' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
   const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
   
   try {
@@ -34,7 +34,7 @@ export async function getOrCreateFolder(accessToken: string): Promise<string> {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        name: 'ClipFlow - Kịch Bản Video',
+        name: 'ClipViral - Kịch Bản Video',
         mimeType: 'application/vnd.google-apps.folder'
       })
     });
@@ -109,7 +109,7 @@ ${script.suggestedHashtags.join(' ')}
 
   output += `
 ======================================================================
-Ứng dụng chế tác bởi ClipFlow - Short Video Script Planner (AI Powered)
+Ứng dụng chế tác bởi ClipViral - Viết nhanh. Quay chất. Dễ viral.
 Tạo lúc: ${new Date().toLocaleString('vi-VN')}
 ======================================================================`;
 
@@ -124,9 +124,9 @@ export function formatScriptToHtml(script: VideoScript): string {
   script.scenes.forEach((scene, index) => {
     scenesHtml += `
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-        <h3 style="color: #ff3b5c; margin-top: 0; margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid #fed7aa; padding-bottom: 5px;">PHÂN CẢNH ${index + 1} (${scene.timeRange})</h3>
+        <h3 style="color: #0B5CFF; margin-top: 0; margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid #fed7aa; padding-bottom: 5px;">PHÂN CẢNH ${index + 1} (${scene.timeRange})</h3>
         <p><strong>🎙️ Giọng thoại / Voiceover:</strong></p>
-        <blockquote style="background-color: #ffffff; border-left: 4px solid #ff3b5c; padding: 10px; margin: 10px 0; font-style: italic; color: #1e293b;">
+        <blockquote style="background-color: #ffffff; border-left: 4px solid #FF7A00; padding: 10px; margin: 10px 0; font-style: italic; color: #1e293b;">
           "${scene.dialogue}"
         </blockquote>
         
@@ -155,9 +155,9 @@ export function formatScriptToHtml(script: VideoScript): string {
       <title>${script.title}</title>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 800px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 40px; border-bottom: 3px double #ff3b5c; padding-bottom: 20px;">
-        <h1 style="color: #ff3b5c; font-size: 28px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase;">Kịch bản Video Ngắn: ${script.title}</h1>
-        <p style="color: #64748b; font-size: 14px; font-style: italic;">Tạo tự động bởi ClipFlow • Ngày tạo: ${new Date().toLocaleString('vi-VN')}</p>
+      <div style="text-align: center; margin-bottom: 40px; border-bottom: 3px double #0B5CFF; padding-bottom: 20px;">
+        <h1 style="color: #0B5CFF; font-size: 28px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase;">Kịch bản Video Ngắn: ${script.title}</h1>
+        <p style="color: #64748b; font-size: 14px; font-style: italic;">Tạo tự động bởi ClipViral • Viết nhanh. Quay chất. Dễ viral. • Ngày tạo: ${new Date().toLocaleString('vi-VN')}</p>
       </div>
 
       <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 20px; margin-bottom: 30px;">
@@ -209,8 +209,8 @@ export function formatScriptToHtml(script: VideoScript): string {
       </div>
 
       <div style="text-align: center; margin-top: 50px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 11px; color: #94a3b8;">
-        <p>Tài liệu được chuyển đổi thông minh từ ClipFlow Short Custom Planner</p>
-        <p>© 2026 ClipFlow Studio. Bảo lưu mọi quyền.</p>
+        <p>Tài liệu được chuyển đổi thông minh từ ClipViral Studio</p>
+        <p>© 2026 ClipViral Studio. Bảo lưu mọi quyền.</p>
       </div>
     </body>
     </html>

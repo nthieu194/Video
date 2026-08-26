@@ -43,9 +43,10 @@ interface SavedIdea {
 
 interface IdeaBankProps {
   onUseIdeaForScript?: (ideaText: string, autoGenerate?: boolean) => void;
+  onCheckAuthForAI?: (featureName?: string) => boolean;
 }
 
-export default function IdeaBank({ onUseIdeaForScript }: IdeaBankProps = {}) {
+export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaBankProps = {}) {
   const [activeSubTab, setActiveSubTab] = useState<"mixer" | "management" | "saved">("mixer");
   const [selectedIndustryId, setSelectedIndustryId] = useState<string>("bds");
   const [savedFilterId, setSavedFilterId] = useState<string>("all");
@@ -388,6 +389,9 @@ export default function IdeaBank({ onUseIdeaForScript }: IdeaBankProps = {}) {
   };
 
   const handleGenerateIdea = async () => {
+    if (onCheckAuthForAI && !onCheckAuthForAI("tính năng Sáng Tạo Ý Tưởng Theo Ngành AI")) {
+      return;
+    }
     setIsGenerating(true);
     setGenerationError(null);
     setGeneratedOutput(null);

@@ -117,4 +117,20 @@ export interface PrompterDialogue {
   updatedAt: string;
 }
 
+export interface UserProfile {
+  userId: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  tier: "free" | "mini" | "standard" | "vip";
+  status?: "active" | "locked";
+  scriptCountToday: number;
+  voiceCountToday: number;
+  imageCountToday: number;
+  lastQuotaReset: string;
+  lastLoginAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 

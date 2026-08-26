@@ -28,11 +28,12 @@ import {
 interface IdeaMixerProps {
   onMixSuccess: (generatedIdea: string) => void;
   isDarkTheme?: boolean;
+  onCheckAuthForAI?: (featureName?: string) => boolean;
 }
 
 type MixerField = "context" | "character" | "action" | "result";
 
-export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps) {
+export function IdeaMixer({ onMixSuccess, isDarkTheme = false, onCheckAuthForAI }: IdeaMixerProps) {
   // Chosen states
   const [context, setContext] = useState("");
   const [character, setCharacter] = useState("");
@@ -47,6 +48,7 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps)
   const [isEnteringCustom, setIsEnteringCustom] = useState(false);
   const [customInputVal, setCustomInputVal] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
 
   // Get active dataset
   const getActiveDataset = (field: MixerField) => {
@@ -112,6 +114,9 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps)
 
   // Handle Synthesis using Backend Gemini Endpoint
   const handleSynthesizeIdea = async () => {
+    if (onCheckAuthForAI && !onCheckAuthForAI("tính năng Mix Ý Tưởng AI")) {
+      return;
+    }
     // Validate: must select at least 2 fields, but ideally all 4. Let's auto-fill any empty fields with random values to make it seamless!
     let finalContext = context;
     let finalCharacter = character;
@@ -172,6 +177,25 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps)
     }
   };
 
+  if (isHidden) {
+    return (
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => setIsHidden(false)}
+          className={`flex items-center gap-2 text-xs font-bold px-3.5 py-2 rounded-xl border transition-all cursor-pointer hover:shadow-xs active:scale-[0.98] ${
+            isDarkTheme
+              ? "bg-slate-900/80 hover:bg-slate-800 text-amber-400 border-amber-500/30"
+              : "bg-amber-50/90 hover:bg-amber-100/90 text-amber-900 border-amber-200"
+          }`}
+        >
+          <Sparkles size={14} className="text-amber-500 animate-pulse shrink-0" />
+          <span>✨ Mở lại Bộ Mix Ý Tưởng Sáng Tạo (4 Trường)</span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className={`rounded-2xl p-4 border transition-all ${
       isDarkTheme 
@@ -212,7 +236,7 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps)
                 ? "bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700"
                 : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-2xs"
             }`}
-            title={isCollapsed ? "Mở rộng hiển thị Bộ Mix" : "Ẩn/Thu gọn Bộ Mix"}
+            title={isCollapsed ? "Mở rộng hiển thị Bộ Mix" : "Thu gọn Bộ Mix"}
           >
             {isCollapsed ? <ChevronDown size={12} className="text-amber-500" /> : <ChevronUp size={12} className="text-amber-500" />}
             <span>{isCollapsed ? "Mở Bộ Mix 🎛️" : "Thu gọn 📁"}</span>
@@ -233,6 +257,19 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false }: IdeaMixerProps)
               <span>Ngẫu nhiên 🎲</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setIsHidden(true)}
+            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+              isDarkTheme
+                ? "bg-slate-800 hover:bg-rose-950/50 text-slate-400 hover:text-rose-400 border-slate-700"
+                : "bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border-slate-200"
+            }`}
+            title="Ẩn hoàn toàn Bộ Mix Ý Tưởng"
+          >
+            <X size={13} />
+          </button>
         </div>
       </div>
 

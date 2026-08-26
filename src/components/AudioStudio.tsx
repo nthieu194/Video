@@ -52,6 +52,7 @@ interface AudioStudioProps {
     voiceCountToday: number;
   } | null;
   onIncrementVoiceQuota?: () => void;
+  onCheckAuthForAI?: (featureName?: string) => boolean;
 }
 
 interface AudioTrack {
@@ -656,8 +657,13 @@ export default function AudioStudio({
     
     try {
       const link = document.createElement("a");
-      link.href = audioData;
-      link.download = `phong-thu-segment-${index + 1}.mp3`;
+      const downloadName = `phong-thu-segment-${index + 1}.mp3`;
+      if (audioData.startsWith("/api/uploads/")) {
+        link.href = `${audioData}?download=${encodeURIComponent(downloadName)}`;
+      } else {
+        link.href = audioData;
+      }
+      link.download = downloadName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -691,14 +697,52 @@ export default function AudioStudio({
       const scriptId = activeTrackIndex >= 0 ? playlist[activeTrackIndex].scriptId : "custom_script";
       const safeScriptId = scriptId.replace(/[^a-zA-Z0-9_\-]/g, "_");
       const docId = `${safeScriptId}_${index}`;
-      const audioBase64 = audioData.startsWith("data:") ? audioData : `data:audio/mp3;base64,${audioData}`;
+      
+      let finalAudioUrl = audioData;
+      let shortBase64 = "";
+
+      // If audioData is a large base64 string (> 200KB) or data URI, upload it to the server file system to stay well below Firestore's 1MB limit
+      if (audioData.startsWith("data:") || audioData.length > 500) {
+        try {
+          const uploadRes = await fetch("/api/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              base64: audioData,
+              filename: `segment_audio_${docId}.mp3`
+            })
+          });
+          if (uploadRes.ok) {
+            const uploadJson = await uploadRes.json();
+            if (uploadJson.imageUrl) {
+              finalAudioUrl = uploadJson.imageUrl;
+              // Also update memory state so subsequent playback uses the fast server url
+              setCustomSegmentAudios(prev => {
+                const updated = { ...prev, [index]: finalAudioUrl };
+                localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+                return updated;
+              });
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("[Upload Audio Warning] Could not upload audio to server disk:", uploadErr);
+        }
+      }
+
+      // If original base64 is compact (< 200,000 chars = ~150KB), keep it; otherwise use the server url as audioBase64
+      if (audioData.startsWith("data:") && audioData.length < 200000) {
+        shortBase64 = audioData;
+      } else {
+        shortBase64 = finalAudioUrl;
+      }
       
       const audioObject = {
         id: docId,
         audioId: docId,
         scriptId: scriptId,
         segmentIndex: index,
-        audioBase64: audioBase64,
+        audioUrl: finalAudioUrl,
+        audioBase64: shortBase64,
         createdAt: new Date().toISOString(),
         userId: currentUser.uid
       };
@@ -735,8 +779,8 @@ export default function AudioStudio({
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data();
-            if (data && data.audioBase64) {
-              return { index: sIdx, audioUrl: data.audioBase64 };
+            if (data && (data.audioUrl || data.audioBase64)) {
+              return { index: sIdx, audioUrl: data.audioUrl || data.audioBase64 };
             }
           }
           return null;

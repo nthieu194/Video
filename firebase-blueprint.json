@@ -119,6 +119,7 @@
         "scriptId": { "type": "string" },
         "segmentIndex": { "type": "number" },
         "audioBase64": { "type": "string" },
+        "audioUrl": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "userId": { "type": "string" }
       },

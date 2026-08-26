@@ -291,9 +291,10 @@ interface Message {
 
 interface SeriesPlannerProps {
   onGenerateScriptFromEpisode: (topic: string, style: ScriptStyle, audience: string, tone: string, keywords?: string) => void;
+  onCheckAuthForAI?: (featureName?: string) => boolean;
 }
 
-export default function SeriesPlanner({ onGenerateScriptFromEpisode }: SeriesPlannerProps) {
+export default function SeriesPlanner({ onGenerateScriptFromEpisode, onCheckAuthForAI }: SeriesPlannerProps) {
   const FIRESTORE_PATH = "series_plans";
 
   // Tab State
@@ -420,6 +421,9 @@ export default function SeriesPlanner({ onGenerateScriptFromEpisode }: SeriesPla
 
   // Handle Send Chat to Gemini
   const handleSendToGemini = async (textToSend?: string) => {
+    if (onCheckAuthForAI && !onCheckAuthForAI("tính năng Trợ Lý Lên Kế Hoạch Chuỗi AI")) {
+      return;
+    }
     const inputPrompt = textToSend || customPrompt.trim();
     
     // Determine category, tone, and audience text representations
@@ -577,7 +581,7 @@ ${inputPrompt ? `\nYêu cầu bổ sung: "${inputPrompt}"` : ""}`;
         id: `series_${Date.now()}_` + Math.random().toString(36).substring(2, 9),
         userId: auth?.currentUser?.uid || "offline_user",
         title: data.title || `Series ${idea.substring(0, 30)}`,
-        description: data.description || "Mô tả chiến lược nội dung dài tập bới ClipFlow AI.",
+        description: data.description || "Mô tả chiến lược nội dung dài tập bởi ClipViral (Viết nhanh. Quay chất. Dễ viral).",
         topic: idea,
         episodesCount: formattedEpisodes.length,
         targetAudience: audience,

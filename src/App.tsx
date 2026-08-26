@@ -43,7 +43,8 @@ import {
   Eye,
   Edit3,
   Database,
-  CreditCard
+  CreditCard,
+  Share2
 } from "lucide-react";
 import { ScriptStyle, Scene, VideoScript, ProductAnalysis, PrompterDialogue } from "./types";
 import ImagePreview from "./components/ImagePreview";
@@ -56,6 +57,7 @@ import { IdeaMixer } from "./components/IdeaMixer";
 import IdeaBank from "./components/IdeaBank";
 import BillingStudio from "./components/BillingStudio";
 import AdminStudio from "./components/AdminStudio";
+import ClipViralLogo, { ClipViralLogoIcon, ClipViralAppIconBadge } from "./components/ClipViralLogo";
 import { ShieldCheck } from "lucide-react";
 
 
@@ -331,6 +333,19 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
+  // Google Auth Modal state for Guests
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [authModalReason, setAuthModalReason] = useState<string>("");
+
+  const checkAuthForAI = (featureName: string = "tính năng AI"): boolean => {
+    if (!user) {
+      setAuthModalReason(`Vui lòng đăng nhập Google để kích hoạt Gói Miễn Phí (Free Tier) và mở khóa ${featureName}!`);
+      setShowAuthModal(true);
+      return false;
+    }
+    return true;
+  };
+
   // Notification / toast feedback
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedPromptIndex, setCopiedPromptIndex] = useState<number | null>(null);
@@ -486,6 +501,24 @@ export default function App() {
           updated = true;
         }
 
+        if (currentUser.displayName && profileData.displayName !== currentUser.displayName) {
+          profileData.displayName = currentUser.displayName;
+          updated = true;
+        }
+
+        if (currentUser.photoURL && profileData.photoURL !== currentUser.photoURL) {
+          profileData.photoURL = currentUser.photoURL;
+          updated = true;
+        }
+
+        if (!profileData.status) {
+          profileData.status = "active";
+          updated = true;
+        }
+
+        profileData.lastLoginAt = new Date().toISOString();
+        updated = true;
+
         if (updated) {
           profileData.updatedAt = new Date().toISOString();
           await setDoc(userDocRef, profileData);
@@ -497,11 +530,15 @@ export default function App() {
         const newProfile = {
           userId: currentUser.uid,
           email: currentUser.email || "user@clipflow.ai",
+          displayName: currentUser.displayName || currentUser.email?.split("@")[0] || "Tài Khoản Google",
+          photoURL: currentUser.photoURL || "",
           tier: "free" as const,
+          status: "active" as const,
           scriptCountToday: 0,
           voiceCountToday: 0,
           imageCountToday: 0,
           lastQuotaReset: new Date().toDateString(),
+          lastLoginAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -800,8 +837,36 @@ export default function App() {
         console.log("Auto-syncing unsaved local audios to Firestore:", unsavedAudios);
         for (const localAudio of unsavedAudios) {
           const audioId = localAudio.id || localAudio.audioId;
+          let finalAudioUrl = localAudio.audioUrl || localAudio.audioBase64 || "";
+          let finalBase64 = localAudio.audioBase64 || "";
+
+          // If local audio has large base64 (> 200KB), upload to server to prevent Firestore 1MB error
+          if (finalBase64 && finalBase64.startsWith("data:") && finalBase64.length > 200000) {
+            try {
+              const uploadRes = await fetch("/api/upload", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  base64: finalBase64,
+                  filename: `sync_${audioId}.mp3`
+                })
+              });
+              if (uploadRes.ok) {
+                const uploadJson = await uploadRes.json();
+                if (uploadJson.imageUrl) {
+                  finalAudioUrl = uploadJson.imageUrl;
+                  finalBase64 = uploadJson.imageUrl;
+                }
+              }
+            } catch (e) {
+              console.warn("Could not upload large audio during sync:", e);
+            }
+          }
+
           const updatedAudio = {
             ...localAudio,
+            audioUrl: finalAudioUrl,
+            audioBase64: finalBase64 && finalBase64.length < 200000 ? finalBase64 : finalAudioUrl,
             userId: currentUser.uid
           };
           try {
@@ -948,7 +1013,7 @@ export default function App() {
         </div>
 
         <div class="footer">
-          Báo cáo phân tích tự động bởi ClipFlow AI - Nền tảng chế tác kịch bản & sản xuất video ngắn.
+          Báo cáo phân tích tự động bởi ClipViral - Viết nhanh. Quay chất. Dễ viral.
         </div>
       </body>
       </html>
@@ -1401,6 +1466,7 @@ export default function App() {
   }, [idea]);
 
   const handleSuggestKeywordIdeas = async () => {
+    if (!checkAuthForAI("tính năng Gợi ý ý tưởng AI")) return;
     if ((!keyword || !keyword.trim()) && !keywordImage) return;
     setIsLoadingKeywordIdeas(true);
     try {
@@ -1560,35 +1626,76 @@ ${environmentVibeStr}
     - Camera: ${selectedStyleObj.cameraMovement}`;
   };
 
-  const getVietnameseVideoPrompt = (scene: Scene, index: number = 0): string => {
-    if (scene.vietnameseVideoPrompt && scene.vietnameseVideoPrompt.trim().length > 10) {
+  const getVietnameseVideoPrompt = (scene: Scene, index: number = 0, currentScript?: VideoScript): string => {
+    // If already in the complete 8-bullet structured format, return it directly
+    if (
+      scene.vietnameseVideoPrompt &&
+      scene.vietnameseVideoPrompt.includes("• Kích thước & Khung hình") &&
+      scene.vietnameseVideoPrompt.includes("• Bối cảnh không gian quay") &&
+      scene.vietnameseVideoPrompt.includes("• Hành động & Diễn xuất")
+    ) {
       return scene.vietnameseVideoPrompt;
     }
+
+    const scriptRef = currentScript || activeScript;
     const visual = scene.visualDescription || "Góc quay cận cảnh sinh động";
     const dialogue = scene.dialogue || "";
     const audio = scene.audioSuggestion || "Nhạc nền lôi cuốn";
+    const scriptStyle = scriptRef?.style || style || "educational";
+    const ind = scriptRef?.reviewIndustry || reviewIndustry || "beauty";
 
-    const ind = activeScript?.reviewIndustry || reviewIndustry || "beauty";
-    
     let cameraVibe = "Góc máy Cận cảnh vừa (Medium Close-up), bố cục 1/3 điện ảnh, tỷ lệ dọc 9:16 chuẩn TikTok/Reels.";
     let movementVibe = "Cú máy push-in mượt mà tiến nhẹ về phía chủ thể, nhịp điệu tự nhiên 60fps.";
     let lightingVibe = "Ánh sáng studio mềm mại (Soft ring-light), màu sắc tươi sáng tôn nét da tự nhiên.";
 
-    if (ind === "beauty") {
-      lightingVibe = "Ánh sáng halo ring-light lấp lánh mịn da, tông màu pastel dịu ngọt, bối cảnh góc trang điểm sang xịn.";
-      movementVibe = "Cú trượt slider mượt mà (slow slider sweep), chuyển nét trường bối cảnh dịu nhẹ, cận cảnh chất kem/màu swatch mượt.";
-    } else if (ind === "tech") {
-      lightingVibe = "Ánh sáng LED Neon Cyber xanh-tím kịch tính, bối cảnh bàn làm việc tối giản thời thượng.";
-      movementVibe = "Lia máy dứt khoát (snappy quick pan), góc quay nghiêng kịch tính (Dutch angle), chuyển nét giật nhịp kịch tính.";
-    } else if (ind === "food") {
-      lightingVibe = "Ánh sáng cam vàng ấm áp kích thích vị giác, khói nghi ngút bốc nhẹ, bề mặt óng ả kịch tính.";
-      movementVibe = "Xoay góc orbital 360 độ cực cận cảnh (macro circle pan), góc trượt từ trên xuống thẳng đứng.";
-    } else if (ind === "fashion") {
-      lightingVibe = "Ánh sáng studio tạp chí thời trang cao cấp, tông màu rực ấm sang trọng.";
-      movementVibe = "Chuyển động cầm tay mượt organic (handheld tracking), lia dọc theo dáng trang phục (majestic upward tilt).";
+    if (scriptStyle === "product_review" || scriptStyle === ScriptStyle.PRODUCT_REVIEW) {
+      if (ind === "beauty") {
+        lightingVibe = "Ánh sáng halo ring-light lấp lánh mịn da, tông màu pastel dịu ngọt, bối cảnh góc trang điểm sang xịn.";
+        movementVibe = "Cú trượt slider mượt mà (slow slider sweep), chuyển nét trường bối cảnh dịu nhẹ, cận cảnh chất kem/màu swatch mượt.";
+      } else if (ind === "tech") {
+        lightingVibe = "Ánh sáng LED Neon Cyber xanh-tím kịch tính, bối cảnh bàn làm việc tối giản thời thượng.";
+        movementVibe = "Lia máy dứt khoát (snappy quick pan), góc quay nghiêng kịch tính (Dutch angle), chuyển nét giật nhịp kịch tính.";
+      } else if (ind === "food") {
+        lightingVibe = "Ánh sáng cam vàng ấm áp kích thích vị giác, khói nghi ngút bốc nhẹ, bề mặt óng ả kịch tính.";
+        movementVibe = "Xoay góc orbital 360 độ cực cận cảnh (macro circle pan), góc trượt từ trên xuống thẳng đứng.";
+      } else if (ind === "fashion") {
+        lightingVibe = "Ánh sáng studio tạp chí thời trang cao cấp, tông màu rực ấm sang trọng.";
+        movementVibe = "Chuyển động cầm tay mượt organic (handheld tracking), lia dọc theo dáng trang phục (majestic upward tilt).";
+      } else if (ind === "home") {
+        lightingVibe = "Ánh sáng tự nhiên ban mai ấm cúng qua cửa kính, tông màu gỗ sáng và beige dịu mắt.";
+        movementVibe = "Góc trượt ngang tĩnh phẳng êm ái (smooth straight slider), chuyển nét đặc tả tính năng gia dụng.";
+      } else if (ind === "health") {
+        lightingVibe = "Ánh sáng thể thao giàu năng lượng, độ tương phản sắc nét khỏe khoắn.";
+        movementVibe = "Cú máy bám theo chuyển động thực (action-tracking), lia góc thấp hất lên uy lực.";
+      } else if (ind === "travel") {
+        lightingVibe = "Ánh sáng hoàng hôn hoặc bình minh rực rỡ (volumetric sun shafts), gam màu điện ảnh tự nhiên.";
+        movementVibe = "Quét đại cảnh 360 độ (epic orbital sweep), trượt từ góc rộng sang cận cảnh.";
+      } else if (ind === "education") {
+        lightingVibe = "Ánh sáng ấm cúng cổ điển thư viện, dịu mắt tăng độ tập trung tri thức.";
+        movementVibe = "Lia máy êm ái tạo chiều sâu trường ảnh (long focal depth parallax), cận cảnh trang sách/vật phẩm.";
+      }
+    } else if (scriptStyle === "comedy" || scriptStyle === ScriptStyle.COMEDY) {
+      cameraVibe = "Góc máy Cận cảnh biểu cảm (Medium Close-up), trực diện phá vỡ bức tường thứ 4, bố cục 1/3.";
+      movementVibe = "Cú snap-zoom giật nhịp bắt biểu cảm hài hước, lia máy whip-pan tạo điểm nhấn gây cười tự nhiên.";
+      lightingVibe = "Ánh sáng tươi sáng rực rỡ, độ tương phản vừa phải, màu sắc trẻ trung bắt mắt.";
+    } else if (scriptStyle === "dramatic" || scriptStyle === ScriptStyle.DRAMATIC) {
+      cameraVibe = "Góc máy nghiêng kịch tính (Dutch angle), cận cảnh ánh mắt và biểu cảm xúc động mạnh mẽ.";
+      movementVibe = "Slow-motion tracking chậm rãi, lia máy dồn nén cảm xúc và đẩy cao trào kịch tính.";
+      lightingVibe = "Ánh sáng tương phản cao điện ảnh (Chiaroscuro), đổ bóng nghệ thuật, tông màu sâu sắc.";
+    } else if (scriptStyle === "storytelling" || scriptStyle === ScriptStyle.STORYTELLING) {
+      cameraVibe = "Góc máy chuyển biến từ Toàn cảnh sang Cận cảnh chân dung (Wide to Close-up), bố cục 1/3 giàu cảm xúc.";
+      movementVibe = "Steadicam mượt mà chuyển động đồng hành cùng chủ thể, lia máy dịu êm theo dòng tự sự.";
+      lightingVibe = "Ánh sáng tự nhiên giàu chất thơ (Golden hour hoàng hôn vàng óng), tông màu hoài niệm điện ảnh.";
+    } else if (scriptStyle === "trend_jacking" || scriptStyle === ScriptStyle.TREND_JACKING) {
+      cameraVibe = "Góc máy Cận cảnh năng động (Close-up), bố cục dọc 9:16 phá cách chuẩn nhịp trend.";
+      movementVibe = "Chuyển động giật nhịp bắt beat âm nhạc, lia máy nhanh dứt khoát theo hiệu ứng chuyển cảnh.";
+      lightingVibe = "Ánh sáng Neon Cyber phát sáng hoặc ánh sáng ngoài trời năng động, độ tương phản cao.";
     }
 
-    const bgDesc = visual.includes("Bối cảnh") ? visual : `Bối cảnh không gian quay: ${visual}`;
+    let bgDesc = visual;
+    if (!bgDesc.toLowerCase().includes("bối cảnh")) {
+      bgDesc = `Bối cảnh không gian quay: ${visual}`;
+    }
 
     return `🎬 [PROMPT TẠO VIDEO AI - CẢNH ${index + 1}]
 • Kích thước & Khung hình: Khung hình dọc 9:16 (TikTok/Reels/Shorts), độ phân giải 4K 60fps điện ảnh.
@@ -1797,8 +1904,46 @@ ${environmentVibeStr}
     }
   };
 
+  const compressImageFile = (file: any): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (readerEvent: any) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const maxDim = 1024;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL("image/jpeg", 0.85));
+          } else {
+            resolve(readerEvent.target.result);
+          }
+        };
+        img.onerror = () => resolve(readerEvent.target.result);
+        img.src = readerEvent.target.result;
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Analyze Product Details & AI Deep Analysis
   const handleAnalyzeProduct = async () => {
+    if (!checkAuthForAI("tính năng Phân tích sản phẩm AI")) return;
     if (!productAnalyzeDesc.trim() && reviewReferenceImages.length === 0) {
       setErrorMsg("Vui lòng nhập mô tả/tên sản phẩm hoặc tải ảnh tham chiếu lên trước khi phân tích!");
       return;
@@ -1822,8 +1967,12 @@ ${environmentVibeStr}
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Không thể phân tích sản phẩm từ AI.");
+        let msg = "Không thể phân tích sản phẩm từ AI.";
+        try {
+          const errorData = await response.json();
+          if (errorData?.error) msg = errorData.error;
+        } catch (e) {}
+        throw new Error(msg);
       }
 
       const data = await response.json();
@@ -1831,7 +1980,7 @@ ${environmentVibeStr}
         setProductAnalysisResult(data.analysis);
         setProductSources(data.sources || []);
         setSuccessMsg("✨ Đã hoàn thành báo cáo phân tích sản phẩm chuyên sâu!");
-        setTimeout(() => setSuccessMsg(null), 3000);
+        setTimeout(() => setSuccessMsg(null), 4000);
       }
     } catch (err: any) {
       console.error("[Analyze Product Frontend Error]", err);
@@ -1873,8 +2022,7 @@ ${environmentVibeStr}
   // Trigger Gemini detailed video script planner
   const generateScript = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
-      setErrorMsg("Vui lòng đăng nhập bằng tài khoản Google để chế tác kịch bản!");
+    if (!checkAuthForAI("tính năng Sáng tạo kịch bản AI")) {
       return;
     }
     if (!idea.trim()) {
@@ -1960,10 +2108,28 @@ ${environmentVibeStr}
         targetAudience: scriptResult.targetAudience || audience,
         duration: duration,
         tone: scriptResult.tone || tone,
-        scenes: (scriptResult.scenes || []).map((scene: Scene, sidx: number) => ({
-          ...scene,
-          id: scene.id || `scene_${Date.now()}_${sidx}`
-        })),
+        scenes: (scriptResult.scenes || []).map((scene: Scene, sidx: number) => {
+          const generatedVnPrompt = scene.vietnameseVideoPrompt;
+          const isCompleteFormat =
+            generatedVnPrompt &&
+            generatedVnPrompt.includes("• Kích thước & Khung hình") &&
+            generatedVnPrompt.includes("• Bối cảnh không gian quay") &&
+            generatedVnPrompt.includes("• Hành động & Diễn xuất");
+
+          const promptContextScript = {
+            style: style,
+            reviewIndustry: style === ScriptStyle.PRODUCT_REVIEW ? reviewIndustry : undefined,
+            tone: scriptResult.tone || tone
+          } as VideoScript;
+
+          return {
+            ...scene,
+            id: scene.id || `scene_${Date.now()}_${sidx}`,
+            vietnameseVideoPrompt: isCompleteFormat
+              ? generatedVnPrompt
+              : getVietnameseVideoPrompt(scene, sidx, promptContextScript)
+          };
+        }),
         trendAnalysis: scriptResult.trendAnalysis || "Phù hợp phong cách thị trường hiện hành.",
         suggestedHashtags: scriptResult.suggestedHashtags || ["#shorts", "#trending"],
         productionTips: scriptResult.productionTips || ["Quay bằng camera dọc 9:16", "Thu âm rõ nét"],
@@ -2239,6 +2405,7 @@ ${environmentVibeStr}
   // Add a brand new scene to the active video script using AI context preservation
   const handleAddNewScene = async () => {
     if (!activeScript) return;
+    if (!checkAuthForAI("tính năng Viết tiếp phân cảnh AI")) return;
     
     setIsAddingScene(true);
     setErrorMsg(null);
@@ -2257,6 +2424,13 @@ ${environmentVibeStr}
 
       const generatedScene = await response.json();
       
+      const generatedVnPrompt = generatedScene.vietnameseVideoPrompt;
+      const isCompleteFormat =
+        generatedVnPrompt &&
+        generatedVnPrompt.includes("• Kích thước & Khung hình") &&
+        generatedVnPrompt.includes("• Bối cảnh không gian quay") &&
+        generatedVnPrompt.includes("• Hành động & Diễn xuất");
+
       const newScene: Scene = {
         id: Math.random().toString(36).substring(2, 9),
         timeRange: generatedScene.timeRange || "00:20 - 00:25",
@@ -2264,7 +2438,10 @@ ${environmentVibeStr}
         dialogue: generatedScene.dialogue || "Lời thoại tiếp theo...",
         illustrationPrompt: generatedScene.illustrationPrompt || "Cinematic landscape 9:16 portrait",
         audioSuggestion: generatedScene.audioSuggestion || "Nhạc nền lofi phù hợp",
-        geminiOmniVideoPrompt: generatedScene.geminiOmniVideoPrompt || ""
+        geminiOmniVideoPrompt: generatedScene.geminiOmniVideoPrompt || "",
+        vietnameseVideoPrompt: isCompleteFormat
+          ? generatedVnPrompt
+          : getVietnameseVideoPrompt(generatedScene, activeScript.scenes.length, activeScript)
       };
 
       const updatedScript: VideoScript = {
@@ -2356,6 +2533,7 @@ ${environmentVibeStr}
 
   const handleRegenerateDialogue = async (sceneIndex: number) => {
     if (!activeScript) return;
+    if (!checkAuthForAI("tính năng Viết lại lời thoại AI")) return;
     
     setLoadingRegeneratingDialogueSceneIndex(sceneIndex);
     setErrorMsg(null);
@@ -2401,97 +2579,43 @@ ${environmentVibeStr}
     }
   };
 
-  // Delete a scene from the active video script
-  const handleDeleteScene = async (e: React.MouseEvent, idx: number) => {
+  const handleDeleteScene = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    if (!activeScript) return;
-    if (activeScript.scenes.length <= 1) {
-      setErrorMsg("Kịch bản cần tối thiểu 1 phân cảnh để hiển thị.");
-      setTimeout(() => setErrorMsg(null), 4000);
-      return;
-    }
-    
-    // Set index to trigger gorgeous custom modal confirm instead of blocking window.confirm!
-    setDeletingSceneIdx(idx);
+    setDeletingSceneIdx(index);
   };
 
-  // Perform actual deletion when custom confirm modal is clicked
-  const executeDeleteScene = async () => {
+  const executeDeleteScene = () => {
     if (deletingSceneIdx === null || !activeScript) return;
-    const idx = deletingSceneIdx;
-    
-    const updatedScenes = activeScript.scenes.filter((_, i) => i !== idx);
-    const updatedScript: VideoScript = {
-      ...activeScript,
-      scenes: updatedScenes,
-      updatedAt: new Date().toISOString()
-    };
-
+    const updatedScenes = activeScript.scenes
+      .filter((_, i) => i !== deletingSceneIdx)
+      .map((sc, newIdx) => ({ ...sc, sceneNumber: newIdx + 1 }));
+    const updatedScript = { ...activeScript, scenes: updatedScenes };
     setActiveScript(updatedScript);
-    setFocusedSceneIndex(Math.max(0, idx - 1));
-    setIsEditingScene(null);
     setDeletingSceneIdx(null);
-
-    await saveScriptToCloud(updatedScript);
-    setSavedScripts(prev => prev.map(s => s.id === updatedScript.id ? updatedScript : s));
-
-    setSuccessMsg(`Đã xóa phân cảnh ${idx + 1} thành công.`);
+    setSuccessMsg("🗑️ Đã xóa phân cảnh!");
     setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Save generated illustration image from Imagen AI to active script
-  const handleUpdateSceneImage = async (idx: number, imageUrl: string) => {
+  const handleUpdateSceneImage = (sceneIndex: number, newImageUrl: string) => {
     if (!activeScript) return;
-    const updatedScenes = [...activeScript.scenes];
-    updatedScenes[idx] = {
-      ...updatedScenes[idx],
-      imageUrl
-    };
-    
-    const updatedScript: VideoScript = {
-      ...activeScript,
-      scenes: updatedScenes,
-      updatedAt: new Date().toISOString()
-    };
-    
+    const updatedScenes = activeScript.scenes.map((scene, idx) => 
+      idx === sceneIndex ? { ...scene, imageUrl: newImageUrl } : scene
+    );
+    const updatedScript = { ...activeScript, scenes: updatedScenes };
     setActiveScript(updatedScript);
-    await saveScriptToCloud(updatedScript);
-    setSavedScripts(prev => prev.map(s => s.id === updatedScript.id ? updatedScript : s));
-    
-    setSuccessMsg(`Đã lưu hình ảnh AI của Phân cảnh ${idx + 1} thành công!`);
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
-  // Delete illustration image from a specific video script scene
   const handleDeleteScriptImage = async (scriptId: string, sceneIndex: number) => {
     const targetScript = savedScripts.find(s => s.id === scriptId);
-    if (!targetScript) {
-      throw new Error("Không tìm thấy kịch bản tương ứng.");
-    }
-
-    const updatedScenes = [...targetScript.scenes];
-    if (sceneIndex >= 0 && sceneIndex < updatedScenes.length) {
-      const { imageUrl, ...restScene } = updatedScenes[sceneIndex];
-      updatedScenes[sceneIndex] = restScene;
-    } else {
-      throw new Error("Phân cảnh không hợp lệ.");
-    }
-
-    const updatedScript: VideoScript = {
-      ...targetScript,
-      scenes: updatedScenes,
-      updatedAt: new Date().toISOString()
-    };
-
-    if (activeScript && activeScript.id === scriptId) {
+    if (!targetScript) return;
+    const updatedScenes = targetScript.scenes.map((scene, idx) => 
+      idx === sceneIndex ? { ...scene, imageUrl: undefined } : scene
+    );
+    const updatedScript = { ...targetScript, scenes: updatedScenes };
+    setSavedScripts(prev => prev.map(s => s.id === scriptId ? updatedScript : s));
+    if (activeScript?.id === scriptId) {
       setActiveScript(updatedScript);
     }
-
-    await saveScriptToCloud(updatedScript);
-    setSavedScripts(prev => prev.map(s => s.id === scriptId ? updatedScript : s));
-    
-    setSuccessMsg(`Đã xóa hình ảnh của Phân cảnh ${sceneIndex + 1} thành công!`);
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   if (authLoading) {
@@ -2499,139 +2623,6 @@ ${environmentVibeStr}
       <div className="min-h-screen bg-[#131424] text-white flex flex-col items-center justify-center p-6 font-sans">
         <Loader2 className="w-10 h-10 text-[#00F2EA] animate-spin mb-4" />
         <p className="text-sm text-slate-400 font-mono tracking-widest uppercase">Đang kết nối cơ sở dữ liệu và xác thực...</p>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex items-center justify-center p-4 relative font-sans overflow-hidden" id="auth-wall">
-        {/* Subtle decorative glowing background shapes */}
-        <div className="absolute top-[-10%] left-[-15%] w-[50vw] h-[50vw] bg-rose-200/40 rounded-full filter blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-15%] w-[50vw] h-[50vw] bg-violet-200/40 rounded-full filter blur-[120px]" />
-        
-        {/* Centered beautiful professional login card */}
-        <div className="relative w-full max-w-md bg-white border border-slate-200/80 rounded-[32px] shadow-[0_20px_50px_rgba(15,23,42,0.08)] p-8 sm:p-10 z-10 transition-all duration-300">
-          
-          {/* Main aesthetic Logo icon wrapper */}
-          <div className="flex justify-center mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#FF3B5C] to-violet-600 p-[2.5px] flex items-center justify-center shrink-0 shadow-md">
-              <div className="w-full h-full bg-white rounded-[13px] flex items-center justify-center">
-                <Video size={24} className="text-[#FF3B5C]" />
-              </div>
-            </div>
-          </div>
-
-          {/* Title and Badge */}
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-1.5 font-display">
-              Clip<span className="bg-gradient-to-r from-[#FF3B5C] to-violet-600 bg-clip-text text-transparent">Flow AI</span>
-            </h2>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">
-              Short Video Creator Workspace
-            </div>
-          </div>
-
-          {/* Main content prompt */}
-          <div className="text-center space-y-2 mb-8">
-            <h3 className="text-lg font-bold text-slate-800 leading-snug">
-              Chào mừng Nhà Sáng Tạo!
-            </h3>
-            <p className="text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
-              Đăng nhập nhanh để viết kịch bản chuyên nghiệp, phân tích tệp sản phẩm và đồng bộ dữ liệu đám mây an toàn.
-            </p>
-          </div>
-
-          {errorMsg && (
-            <div className="mb-6 space-y-3 text-left animate-fade-in">
-              <div className="p-4 rounded-2xl bg-rose-50 text-rose-800 border border-rose-200/60 text-xs leading-relaxed">
-                <p className="font-bold flex items-center gap-1.5 mb-0.5">
-                  <span>⚠️</span>
-                  <span>Sự cố xác thực:</span>
-                </p>
-                <p className="opacity-90">{errorMsg}</p>
-              </div>
-              
-              {String(errorMsg).toLowerCase().includes("popup") && (
-                <div className="p-4 rounded-2xl bg-violet-50 text-slate-700 border border-violet-100 text-xs leading-relaxed space-y-2.5">
-                  <p className="font-bold text-violet-800 flex items-center gap-1.5">
-                    <span>💡</span>
-                    <span>Bạn đang chạy app trong khung nhúng (Iframe)?</span>
-                  </p>
-                  <p className="leading-normal">
-                    Trình duyệt có thể tự động chặn các cửa sổ Pop-up để bảo mật. Hãy bấm liên kết bên dưới để mở ứng dụng ở Tab mới nhằm đăng nhập 100% thành công:
-                  </p>
-                  <div>
-                    <a
-                      href={typeof window !== "undefined" ? window.location.href : "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-white border border-slate-200 hover:border-violet-500 hover:bg-slate-50 text-violet-700 hover:text-violet-900 transition-all font-bold w-full shadow-xs cursor-pointer"
-                    >
-                      <ExternalLink size={13} />
-                      <span>Mở ClipFlow trong Tab mới</span>
-                    </a>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Core Single Sign-In Buttons */}
-          <div className="space-y-3.5">
-            <button
-              onClick={async () => {
-                setErrorMsg(null);
-                try {
-                  await signInWithGoogle();
-                } catch (e: any) {
-                  setErrorMsg(e.message || "Không thể khởi chạy Google Auth Popup. Hãy thử dùng phương thức 'Chuyển hướng (Redirect)' bên dưới hoặc cấp quyền popups.");
-                }
-              }}
-              className="w-full py-3.5 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-extrabold text-sm tracking-wide transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-3.5 cursor-pointer border border-transparent"
-            >
-              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.62-.03-1.12-.22-1.51-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>Xác thực Google (Cửa sổ Popup)</span>
-            </button>
-
-            <button
-              onClick={async () => {
-                setErrorMsg(null);
-                try {
-                  await signInWithGoogleRedirect();
-                } catch (e: any) {
-                  setErrorMsg(e.message || "Không thể khởi chạy Google Redirect. Vui lòng mở ứng dụng trong Tab mới.");
-                }
-              }}
-              className="w-full py-3 px-6 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs transition-all shadow-xs active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.62-.03-1.12-.22-1.51-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>Xác thực Google (Redirect - Chuyển hướng bảo mật)</span>
-            </button>
-          </div>
-
-          {/* Secure indicator / reassurance */}
-          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-2 text-center text-[11px] text-slate-450">
-            <span className="font-mono text-slate-400 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Realtime Cloud Security Enabled</span>
-            </span>
-            <p className="text-slate-400 max-w-xs leading-normal">
-              Đồng bộ an toàn dữ liệu lưu trữ đám mây qua Google Cloud Firestore thế hệ mới.
-            </p>
-          </div>
-
-        </div>
       </div>
     );
   }
@@ -2898,36 +2889,27 @@ ${environmentVibeStr}
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F0F2F5] text-slate-800" id="clipflow-studio-app">
+    <div className="min-h-screen flex flex-col bg-[#F8FBFF] text-slate-800" id="clipviral-studio-app">
       
       {/* Main Layout Grid */}
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         
         {/* MOBILE TOP HEADER BAR */}
-        <div className="lg:hidden bg-[#1A1B2E] border-b border-[#2D2E45] px-4 py-3.5 flex items-center justify-between sticky top-0 z-50 shadow-md" id="mobile-top-bar">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#FF3B5C] to-[#00F2EA] p-[1.5px] flex items-center justify-center shrink-0 shadow-xs">
-              <div className="w-full h-full bg-[#1A1B2E] rounded-[6px] flex items-center justify-center overflow-hidden">
-                <Video size={14} className="text-[#00F2EA]" />
-              </div>
-            </div>
-            <div className="flex flex-col">
-              <h2 className="text-sm font-extrabold leading-none tracking-tight text-white font-display">
-                ClipFlow AI
-              </h2>
-              {lastSavedTimestamp && (
-                <span className="text-[8px] text-emerald-400 mt-0.5 font-medium flex items-center gap-0.5 animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                  Lưu lúc {lastSavedTimestamp}
-                </span>
-              )}
-            </div>
+        <div className="lg:hidden bg-[#091E42] border-b border-[#1E293B] px-4 py-3 flex items-center justify-between sticky top-0 z-50 shadow-md" id="mobile-top-bar">
+          <div className="flex items-center gap-2">
+            <ClipViralLogo size="sm" showSlogan={false} />
+            {lastSavedTimestamp && (
+              <span className="text-[8px] text-emerald-400 font-medium flex items-center gap-1 bg-emerald-950/60 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                {lastSavedTimestamp}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2.5">
             {/* Login status nhỏ lại góc trên cho mobile */}
             {user && (
-              <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full pl-1.5 pr-2 py-0.5">
+              <div className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full pl-1.5 pr-2 py-0.5">
                 {user.photoURL ? (
                   <img 
                     src={user.photoURL} 
@@ -2936,7 +2918,7 @@ ${environmentVibeStr}
                     className="w-5 h-5 rounded-full border border-white/20" 
                   />
                 ) : (
-                  <div className="w-5 h-5 rounded-full bg-[#FF3B5C]/10 border border-[#FF3B5C]/30 flex items-center justify-center text-[#FF3B5C] text-[8px] font-mono shrink-0">
+                  <div className="w-5 h-5 rounded-full bg-[#0B5CFF] border border-[#00C6FF]/40 flex items-center justify-center text-white text-[8px] font-mono shrink-0">
                     <UserIcon size={9} />
                   </div>
                 )}
@@ -2957,7 +2939,7 @@ ${environmentVibeStr}
                 setMobileMenuOpen(!mobileMenuOpen);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 hover:text-white transition-all cursor-pointer"
+              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white transition-all cursor-pointer border border-white/10"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -2965,9 +2947,9 @@ ${environmentVibeStr}
           </div>
         </div>
 
-        {/* MOBILE COLLAPSIBLE MENU BAR (Các mục thành menu bar ẩn đi trên mobile) */}
+        {/* MOBILE COLLAPSIBLE MENU BAR */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-[#1A1B2E] border-b border-[#2D2E45] p-3 space-y-1 z-40 shadow-xl" id="mobile-expandable-menu">
+          <div className="lg:hidden bg-[#091E42] border-b border-[#1E293B] p-3 space-y-1.5 z-40 shadow-xl" id="mobile-expandable-menu">
             {[
               { tab: "create", label: "1. Tạo Kịch Bản Video AI", icon: Sparkles },
               { tab: "prompter", label: "2. Viết Thoại & Máy Nhắc Bài", icon: Tv },
@@ -2990,7 +2972,7 @@ ${environmentVibeStr}
                   }}
                   className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 ${
                     isSelected 
-                      ? "bg-[#FF3B5C] text-white font-bold" 
+                      ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white font-bold shadow-md shadow-blue-500/25" 
                       : "text-slate-300 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -3000,7 +2982,7 @@ ${environmentVibeStr}
                   </div>
                   {item.badge !== undefined && item.badge > 0 && (
                     <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
-                      isSelected ? "bg-white text-[#FF3B5C]" : "bg-white/10 text-slate-300"
+                      isSelected ? "bg-white text-[#0B5CFF]" : "bg-white/10 text-slate-300"
                     }`}>
                       {item.badge}
                     </span>
@@ -3011,21 +2993,17 @@ ${environmentVibeStr}
           </div>
         )}
 
-        {/* SIDEBAR: #1A1B2E - Dark Premium look matching "Vibrant Palette" */}
-        <aside className="hidden lg:flex lg:w-[280px] bg-[#1A1B2E] text-white flex-col shrink-0 border-r border-[#2D2E45] p-5 lg:p-6" id="sidebar">
+        {/* SIDEBAR: #091E42 - ClipViral Midnight Navy branding */}
+        <aside className="hidden lg:flex lg:w-[290px] bg-[#091E42] text-white flex-col shrink-0 border-r border-[#1E293B] p-5 lg:p-6 shadow-xl" id="sidebar">
           
-          {/* Logo Brand with Vibrant Gradient */}
-          <div className="flex items-center gap-3 mb-8" id="brand-logo-container">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#FF3B5C] to-[#00F2EA] p-[2px] flex items-center justify-center shrink-0 shadow-lg">
-              <div className="w-full h-full bg-[#1A1B2E] rounded-[10px] flex items-center justify-center overflow-hidden">
-                <Video size={18} className="text-[#00F2EA] animate-pulse" />
-              </div>
-            </div>
-            <div>
-              <h2 className="text-xl font-extrabold font-display leading-none tracking-tight">
-                <span className="bg-gradient-to-r from-[#FF3B5C] to-[#00F2EA] bg-clip-text text-transparent">ClipFlow AI</span>
-              </h2>
-              <span className="text-[10px] uppercase font-mono tracking-widest text-[#94A3B8] font-bold block mt-1">Short Video Lab</span>
+          {/* Official ClipViral Logo & Slogan Header */}
+          <div className="mb-7 pb-5 border-b border-white/10" id="brand-logo-container">
+            <ClipViralLogo size="md" showSlogan={true} showBadge={true} />
+            
+            {/* Quick Slogan Tagline Card */}
+            <div className="mt-3.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-[11px]">
+              <span className="text-slate-300 font-medium">⚡ Kịch bản ngắn triệu view</span>
+              <span className="px-1.5 py-0.5 rounded bg-[#FF7A00]/20 text-[#FFC107] text-[10px] font-bold">PRO</span>
             </div>
           </div>
 
@@ -3035,11 +3013,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("create")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "create" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Sparkles size={18} />
+              <Sparkles size={18} className={activeTab === "create" ? "text-yellow-300 animate-spin-slow" : "text-[#00C6FF]"} />
               <span>1. Tạo Kịch Bản Video AI</span>
             </button>
 
@@ -3047,11 +3025,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("prompter")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "prompter" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Tv size={18} />
+              <Tv size={18} className={activeTab === "prompter" ? "text-white" : "text-[#FF7A00]"} />
               <span>2. Nhắc Chữ & Lời Thoại</span>
             </button>
 
@@ -3059,11 +3037,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("audio")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "audio" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Headphones size={18} />
+              <Headphones size={18} className={activeTab === "audio" ? "text-white" : "text-purple-400"} />
               <span>3. Lồng Tiếng AI Studio</span>
             </button>
 
@@ -3071,11 +3049,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("ideabank")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "ideabank" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Database size={18} />
+              <Database size={18} className={activeTab === "ideabank" ? "text-white" : "text-amber-400"} />
               <span>4. Ý Tưởng Hot Trend</span>
             </button>
 
@@ -3083,11 +3061,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("planner")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "planner" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
-              <Calendar size={18} />
+              <Calendar size={18} className={activeTab === "planner" ? "text-white" : "text-emerald-400"} />
               <span>5. Lịch Đăng Video</span>
             </button>
 
@@ -3095,14 +3073,14 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("library")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "library" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
               }`}
             >
               <div className="relative">
-                <Folder size={18} />
+                <Folder size={18} className={activeTab === "library" ? "text-white" : "text-cyan-400"} />
                 {(savedScripts.length + savedDialogues.length + savedAudios.length + savedAnalyses.length) > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 px-1 min-w-4 h-4 bg-[#00F2EA] text-[#1A1B2E] text-[9px] font-bold rounded-full flex items-center justify-center">
+                  <span className="absolute -top-1.5 -right-1.5 px-1 min-w-4 h-4 bg-[#FF7A00] text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-xs">
                     {savedScripts.length + savedDialogues.length + savedAudios.length + savedAnalyses.length}
                   </span>
                 )}
@@ -3114,11 +3092,11 @@ ${environmentVibeStr}
               onClick={() => setActiveTab("billing")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "billing" 
-                  ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                  : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                  ? "bg-gradient-to-r from-[#FF7A00] to-[#FF5500] text-white shadow-lg shadow-orange-500/30 font-bold" 
+                  : "text-amber-300/90 hover:text-amber-200 hover:bg-white/5"
               }`}
             >
-              <CreditCard size={18} />
+              <CreditCard size={18} className={activeTab === "billing" ? "text-white" : "text-amber-400"} />
               <span>💎 Nâng Cấp VIP</span>
             </button>
 
@@ -3127,8 +3105,8 @@ ${environmentVibeStr}
                 onClick={() => setActiveTab("admin" as any)}
                 className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                   activeTab === "admin" 
-                    ? "bg-[#FF3B5C] text-white shadow-md shadow-[#FF3B5C]/20" 
-                    : "text-[#94A3B8] hover:text-white hover:bg-white/5"
+                    ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                    : "text-slate-300 hover:text-white hover:bg-white/5"
                 }`}
               >
                 <ShieldCheck size={18} />
@@ -3137,7 +3115,14 @@ ${environmentVibeStr}
             )}
           </nav>
 
-          {/* Connected Server Sync indicator info is hidden for clutter prevention */}
+          {/* Slogan Brand Footer in Sidebar */}
+          <div className="pt-4 mt-auto border-t border-white/10 text-center">
+            <p className="text-[11px] font-bold text-slate-400 tracking-tight">
+              <span className="text-[#0B5CFF]">Viết nhanh.</span>{" "}
+              <span className="text-[#00C6FF]">Quay chất.</span>{" "}
+              <span className="text-[#FF7A00]">Dễ viral.</span>
+            </p>
+          </div>
 
         </aside>
 
@@ -3194,13 +3179,11 @@ ${environmentVibeStr}
               )}
               
               <div className="hidden sm:flex items-center gap-2 text-xs bg-[#F0F2F5] px-3.5 py-2 rounded-xl text-slate-600 font-medium">
-                <Clock size={13} className="text-[#FF3B5C]" />
+                <Clock size={13} className="text-[#0B5CFF]" />
                 <span>Hôm nay: {new Date().toLocaleDateString("vi-VN", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
               </div>
-
-              {/* Login profile status in top corner for desktop */}
-              {user && (
-                <div className="hidden lg:flex items-center gap-2 pl-3 border-l text-slate-700" id="desktop-user-header">
+              {user ? (
+                <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-slate-700" id="desktop-user-header">
                   {user.photoURL ? (
                     <img 
                       src={user.photoURL} 
@@ -3209,7 +3192,7 @@ ${environmentVibeStr}
                       className="w-7 h-7 rounded-full border border-slate-200" 
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-[#FF3B5C]/10 border border-[#FF3B5C]/25 flex items-center justify-center text-[#FF3B5C] font-bold text-xs shrink-0 font-mono">
+                    <div className="w-7 h-7 rounded-full bg-[#0B5CFF]/10 border border-[#0B5CFF]/25 flex items-center justify-center text-[#0B5CFF] font-bold text-xs shrink-0 font-mono">
                       <UserIcon size={12} />
                     </div>
                   )}
@@ -3220,11 +3203,27 @@ ${environmentVibeStr}
                   <button
                     onClick={() => setConfirmSignOut(true)}
                     title="Đăng xuất"
-                    className="p-1.5 bg-slate-50 hover:bg-rose-550 hover:text-rose-600 text-slate-400 border border-slate-200 transition-all rounded-lg cursor-pointer ml-1"
+                    className="p-1.5 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 text-slate-400 border border-slate-200 transition-all rounded-lg cursor-pointer ml-1"
                   >
                     <LogOut size={12} />
                   </button>
                 </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setAuthModalReason("Đăng nhập bằng tài khoản Google để kích hoạt Gói Miễn Phí (Free Tier) và trải nghiệm toàn bộ tính năng AI!");
+                    setShowAuthModal(true);
+                  }}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.62-.03-1.12-.22-1.51-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Đăng nhập Google</span>
+                </button>
               )}
             </div>
           </header>
@@ -3233,6 +3232,30 @@ ${environmentVibeStr}
           <div className="flex-1 overflow-y-auto p-4 lg:p-8" id="main-display-window">
             
             {/* TOAST SYSTEM (Feedback) */}
+            {!user && (
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 text-blue-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#0B5CFF]/10 text-[#0B5CFF] rounded-xl shrink-0 font-bold">
+                    👤
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-900">Chế độ Khách (Guest Mode) — Bạn đang dùng ứng dụng ở trạng thái khách</p>
+                    <p className="text-[11px] text-slate-600 mt-0.5">Đăng nhập Google để tự động kích hoạt Gói Miễn Phí (Free Tier) & mở khóa các tính năng sáng tạo AI.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setAuthModalReason("Đăng nhập bằng tài khoản Google để kích hoạt Gói Miễn Phí (Free Tier) và mở khóa các tính năng AI!");
+                    setShowAuthModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-[#0B5CFF] hover:bg-[#0948c7] active:bg-[#073699] text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer self-end sm:self-center flex items-center gap-1.5"
+                >
+                  <span>Kích hoạt Gói Miễn Phí</span>
+                  <ArrowRight size={13} />
+                </button>
+              </div>
+            )}
+
             {successMsg && (
               <div className="mb-6 p-4 rounded-xl bg-emerald-50 text-emerald-800 border-2 border-emerald-300 font-medium text-sm flex items-center justify-between shadow-xs animate-fade-in-down">
                 <div className="flex items-center gap-2">
@@ -3244,9 +3267,9 @@ ${environmentVibeStr}
             )}
 
             {errorMsg && (
-              <div className="mb-6 p-4 rounded-xl bg-rose-50 text-rose-800 border-2 border-[#FF3B5C]/35 font-medium text-sm flex items-center justify-between shadow-xs">
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 text-rose-800 border-2 border-rose-300 font-medium text-sm flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#FF3B5C] animate-ping" />
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                   <span>{errorMsg}</span>
                 </div>
                 <button onClick={() => setErrorMsg(null)} className="text-rose-600 hover:text-rose-800 text-xs font-bold leading-none">&times;</button>
@@ -3255,124 +3278,195 @@ ${environmentVibeStr}
 
             {/* TAB 1: CREATE & MANAGE (Primary Builder Workspace) */}
             {activeTab === "create" && (
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 items-start">
+              <div className="space-y-6">
                 
-                {/* 1. INPUT FORM COLUMN: Left spans 5 cols */}
-                <div className="xl:col-span-5 space-y-6">
+                {/* CLIPVIRAL BRAND HERO SHOWCASE BANNER */}
+                <div className="rounded-3xl bg-gradient-to-br from-[#091E42] via-[#0B2559] to-[#0A1838] p-6 lg:p-8 text-white relative overflow-hidden shadow-xl border border-blue-500/20" id="clipviral-hero-banner">
+                  {/* Glow effect backdrops */}
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-[#00C6FF]/20 to-transparent rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-1/3 w-80 h-80 bg-gradient-to-tr from-[#FF7A00]/15 to-transparent rounded-full blur-3xl pointer-events-none" />
                   
-                  {/* Ideas Generator Card */}
-                  <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-200" id="input-ideas-card">
-                    
-                    {/* GỢI Ý MẪU NHANH 1-CHẠM DÀNH CHO NGƯỜI MỚI */}
-                    <div className="mb-6 p-4 bg-gradient-to-r from-rose-50/80 via-amber-50/60 to-sky-50/80 border border-rose-200/80 rounded-2xl space-y-2.5 shadow-xs">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#FF3B5C] text-white text-[10px] font-bold">1</span>
-                          <h4 className="text-xs font-bold text-slate-800 uppercase font-sans">
-                            Mẫu Gợi Ý 1-Chạm (Dành Cho Người Mới)
-                          </h4>
-                        </div>
-                        <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">Bấm chọn mẫu để AI tự tạo nhanh!</span>
+                  <div className="relative z-10 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                    <div className="space-y-3 max-w-2xl">
+                      {/* Slogan Pill */}
+                      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold">
+                        <span className="flex h-2 w-2 rounded-full bg-[#FF7A00] animate-ping" />
+                        <span className="text-[#00C6FF] font-black">ClipViral</span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-amber-300 font-bold">Viết nhanh. Quay chất. Dễ viral.</span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTemplateId("review");
-                            setIdea("Review chân thực sản phẩm [Tên sản phẩm] sau 1 tháng sử dụng: 3 điểm thích nhất, 1 điểm cần cân nhắc và khuyên mua cho ai.");
-                            setStyle(ScriptStyle.PRODUCT_REVIEW);
-                          }}
-                          className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
-                            selectedTemplateId === "review"
-                              ? "bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-[#FF3B5C] ring-2 ring-[#FF3B5C]/30 shadow-md scale-[1.02]"
-                              : "bg-white hover:bg-[#FF3B5C]/10 border border-slate-200 hover:border-[#FF3B5C]/40"
-                          }`}
-                        >
-                          {selectedTemplateId === "review" && (
-                            <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#FF3B5C] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
-                              <Check size={9} /> Đã chọn
-                            </span>
-                          )}
-                          <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "review" ? "text-[#FF3B5C]" : "text-slate-800 group-hover:text-[#FF3B5C]"}`}>
-                            <span>🛍️</span> Review Bán Hàng
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Gia dụng, mỹ phẩm, thời trang...</p>
-                        </button>
+                      <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight leading-tight font-display">
+                        Ý tưởng có sẵn? Để <span className="bg-gradient-to-r from-[#00C6FF] via-[#0B5CFF] to-[#FF7A00] bg-clip-text text-transparent">ClipViral</span> viết kịch bản cho bạn!
+                      </h2>
+                      
+                      <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                        AI Video Script Studio chuyên sâu cho video ngắn (TikTok, Reels, Shorts). Tối ưu từng giây giữ chân khán giả, sẵn sàng chuyển ngay sang máy nhắc chữ & phòng lồng tiếng.
+                      </p>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTemplateId("educational");
-                            setIdea("Chia sẻ 3 mẹo hay cực đơn giản về [Chủ đề] giúp tiết kiệm 50% thời gian mỗi ngày mà nhiều người chưa biết.");
-                            setStyle(ScriptStyle.EDUCATIONAL);
-                          }}
-                          className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
-                            selectedTemplateId === "educational"
-                              ? "bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-[#FF3B5C] ring-2 ring-[#FF3B5C]/30 shadow-md scale-[1.02]"
-                              : "bg-white hover:bg-[#FF3B5C]/10 border border-slate-200 hover:border-[#FF3B5C]/40"
-                          }`}
-                        >
-                          {selectedTemplateId === "educational" && (
-                            <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#FF3B5C] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
-                              <Check size={9} /> Đã chọn
-                            </span>
-                          )}
-                          <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "educational" ? "text-[#FF3B5C]" : "text-slate-800 group-hover:text-[#FF3B5C]"}`}>
-                            <span>💡</span> Chia Sẻ Mẹo Hay
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Mẹo cuộc sống, sức khỏe, công việc...</p>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTemplateId("comedy");
-                            setIdea("Tình huống bất ổn hài hước trong công việc/cuộc sống thường ngày, cái kết bất ngờ tấu hài gây sốt.");
-                            setStyle(ScriptStyle.COMEDY);
-                          }}
-                          className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
-                            selectedTemplateId === "comedy"
-                              ? "bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-[#FF3B5C] ring-2 ring-[#FF3B5C]/30 shadow-md scale-[1.02]"
-                              : "bg-white hover:bg-[#FF3B5C]/10 border border-slate-200 hover:border-[#FF3B5C]/40"
-                          }`}
-                        >
-                          {selectedTemplateId === "comedy" && (
-                            <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#FF3B5C] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
-                              <Check size={9} /> Đã chọn
-                            </span>
-                          )}
-                          <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "comedy" ? "text-[#FF3B5C]" : "text-slate-800 group-hover:text-[#FF3B5C]"}`}>
-                            <span>😂</span> Hài Hước Bất Ổn
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Tình huống vui nhộn, tấu hài triệu view...</p>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedTemplateId("storytelling");
-                            setIdea("Kể lại câu chuyện có thật truyền cảm xúc về [Chủ đề/Nhân vật], kèm bài học sâu sắc chạm tới trái tim người xem.");
-                            setStyle(ScriptStyle.STORYTELLING);
-                          }}
-                          className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
-                            selectedTemplateId === "storytelling"
-                              ? "bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-[#FF3B5C] ring-2 ring-[#FF3B5C]/30 shadow-md scale-[1.02]"
-                              : "bg-white hover:bg-[#FF3B5C]/10 border border-slate-200 hover:border-[#FF3B5C]/40"
-                          }`}
-                        >
-                          {selectedTemplateId === "storytelling" && (
-                            <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#FF3B5C] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
-                              <Check size={9} /> Đã chọn
-                            </span>
-                          )}
-                          <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "storytelling" ? "text-[#FF3B5C]" : "text-slate-800 group-hover:text-[#FF3B5C]"}`}>
-                            <span>📖</span> Câu Chuyện Cảm Động
-                          </div>
-                          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Truyền cảm hứng, câu chuyện đời sống...</p>
-                        </button>
+                      {/* Hashtag Pills */}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {["#TikTok", "#Reels", "#YouTubeShorts", "#ContentCreator", "#ViralVideo"].map((tag) => (
+                          <span key={tag} className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[11px] font-mono text-cyan-200">
+                            {tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
+
+                    {/* Right Features Mini Card Group */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-2.5 w-full lg:w-72 shrink-0">
+                      <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#0B5CFF] to-[#00C6FF] flex items-center justify-center shrink-0 shadow-md">
+                          <Sparkles className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">AI viết kịch bản</div>
+                          <div className="text-[10px] text-slate-400">Hook 3s đầu giữ chân</div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#FF5500] flex items-center justify-center shrink-0 shadow-md">
+                          <Tv className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">Tối ưu nền tảng</div>
+                          <div className="text-[10px] text-slate-400">TikTok, Reels, Shorts 9:16</div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-2xl bg-white/5 backdrop-blur-md border border-white/10 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shrink-0 shadow-md">
+                          <Share2 className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">Tăng khả năng viral</div>
+                          <div className="text-[10px] text-slate-400">Đẩy tỷ lệ xem hết video</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 lg:gap-8 items-start">
+                  
+                  {/* 1. INPUT FORM COLUMN: Left spans 5 cols */}
+                  <div className="xl:col-span-5 space-y-6">
+                    
+                    {/* Ideas Generator Card */}
+                    <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-200" id="input-ideas-card">
+                      
+                      {/* GỢI Ý MẪU NHANH 1-CHẠM DÀNH CHO NGƯỜI MỚI */}
+                      <div className="mb-6 p-4 bg-gradient-to-r from-blue-50/80 via-indigo-50/60 to-cyan-50/80 border border-blue-200/80 rounded-2xl space-y-2.5 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#0B5CFF] text-white text-[10px] font-bold">1</span>
+                            <h4 className="text-xs font-bold text-slate-800 uppercase font-sans">
+                              Mẫu Gợi Ý 1-Chạm (Dành Cho Người Mới)
+                            </h4>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">Bấm chọn mẫu để AI tự tạo nhanh!</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTemplateId("review");
+                              setIdea("Review chân thực sản phẩm [Tên sản phẩm] sau 1 tháng sử dụng: 3 điểm thích nhất, 1 điểm cần cân nhắc và khuyên mua cho ai.");
+                              setStyle(ScriptStyle.PRODUCT_REVIEW);
+                            }}
+                            className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
+                              selectedTemplateId === "review"
+                                ? "bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-[#0B5CFF] ring-2 ring-[#0B5CFF]/30 shadow-md scale-[1.02]"
+                                : "bg-white hover:bg-[#0B5CFF]/10 border border-slate-200 hover:border-[#0B5CFF]/40"
+                            }`}
+                          >
+                            {selectedTemplateId === "review" && (
+                              <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#0B5CFF] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
+                                <Check size={9} /> Đã chọn
+                              </span>
+                            )}
+                            <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "review" ? "text-[#0B5CFF]" : "text-slate-800 group-hover:text-[#0B5CFF]"}`}>
+                              <span>🛍️</span> Review Bán Hàng
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Gia dụng, mỹ phẩm, thời trang...</p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTemplateId("educational");
+                              setIdea("Chia sẻ 3 mẹo hay cực đơn giản về [Chủ đề] giúp tiết kiệm 50% thời gian mỗi ngày mà nhiều người chưa biết.");
+                              setStyle(ScriptStyle.EDUCATIONAL);
+                            }}
+                            className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
+                              selectedTemplateId === "educational"
+                                ? "bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-[#0B5CFF] ring-2 ring-[#0B5CFF]/30 shadow-md scale-[1.02]"
+                                : "bg-white hover:bg-[#0B5CFF]/10 border border-slate-200 hover:border-[#0B5CFF]/40"
+                            }`}
+                          >
+                            {selectedTemplateId === "educational" && (
+                              <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#0B5CFF] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
+                                <Check size={9} /> Đã chọn
+                              </span>
+                            )}
+                            <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "educational" ? "text-[#0B5CFF]" : "text-slate-800 group-hover:text-[#0B5CFF]"}`}>
+                              <span>💡</span> Chia Sẻ Mẹo Hay
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Mẹo cuộc sống, sức khỏe, công việc...</p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTemplateId("comedy");
+                              setIdea("Tình huống bất ổn hài hước trong công việc/cuộc sống thường ngày, cái kết bất ngờ tấu hài gây sốt.");
+                              setStyle(ScriptStyle.COMEDY);
+                            }}
+                            className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
+                              selectedTemplateId === "comedy"
+                                ? "bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-[#0B5CFF] ring-2 ring-[#0B5CFF]/30 shadow-md scale-[1.02]"
+                                : "bg-white hover:bg-[#0B5CFF]/10 border border-slate-200 hover:border-[#0B5CFF]/40"
+                            }`}
+                          >
+                            {selectedTemplateId === "comedy" && (
+                              <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#0B5CFF] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
+                                <Check size={9} /> Đã chọn
+                              </span>
+                            )}
+                            <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "comedy" ? "text-[#0B5CFF]" : "text-slate-800 group-hover:text-[#0B5CFF]"}`}>
+                              <span>😂</span> Hài Hước Bất Ổn
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Tình huống vui nhộn, tấu hài triệu view...</p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTemplateId("storytelling");
+                              setIdea("Kể lại câu chuyện có thật truyền cảm xúc về [Chủ đề/Nhân vật], kèm bài học sâu sắc chạm tới trái tim người xem.");
+                              setStyle(ScriptStyle.STORYTELLING);
+                            }}
+                            className={`p-2.5 rounded-xl text-left transition-all duration-200 cursor-pointer shadow-2xs group relative ${
+                              selectedTemplateId === "storytelling"
+                                ? "bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-[#0B5CFF] ring-2 ring-[#0B5CFF]/30 shadow-md scale-[1.02]"
+                                : "bg-white hover:bg-[#0B5CFF]/10 border border-slate-200 hover:border-[#0B5CFF]/40"
+                            }`}
+                          >
+                            {selectedTemplateId === "storytelling" && (
+                              <span className="absolute -top-2 -right-1 px-1.5 py-0.5 bg-[#0B5CFF] text-white text-[9px] font-bold rounded-full shadow-md flex items-center gap-0.5 animate-bounce">
+                                <Check size={9} /> Đã chọn
+                              </span>
+                            )}
+                            <div className={`text-xs font-bold flex items-center gap-1 ${selectedTemplateId === "storytelling" ? "text-[#0B5CFF]" : "text-slate-800 group-hover:text-[#0B5CFF]"}`}>
+                              <span>📖</span> Câu Chuyện Cảm Động
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">Truyền cảm hứng, câu chuyện đời sống...</p>
+                          </button>
+                        </div>
+                      </div>
 
                     {/* TRỢ LÝ GỢI Ý CHỦ ĐỀ VÀ Ý TƯỞNG */}
                     <div className="mb-6 p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3.5" id="keyword-ideas-helper">
@@ -3523,6 +3617,7 @@ ${environmentVibeStr}
                     {/* Creative Idea Mixer (4 categories preset) */}
                     <div className="mb-4">
                       <IdeaMixer 
+                        onCheckAuthForAI={checkAuthForAI}
                         onMixSuccess={(generatedIdea) => {
                           setIdea(generatedIdea);
                           const textEl = document.getElementById("user-idea-textarea") as HTMLTextAreaElement;
@@ -3689,22 +3784,25 @@ ${environmentVibeStr}
                                       accept="image/*" 
                                       multiple 
                                       className="hidden" 
-                                      onChange={(e) => {
+                                      onChange={async (e) => {
                                         const files = Array.from(e.target.files || []);
-                                        files.forEach((file: any) => {
-                                            const reader = new FileReader();
-                                            reader.onloadend = () => {
-                                                const base64Str = reader.result as string;
-                                                setReviewReferenceImages(prev => {
-                                                    const nextList = [...prev, base64Str];
-                                                    if (autoSuggestReviewIdea) {
-                                                        triggerReviewIdeaSuggestions(reviewBenefits, reviewFeatures, reviewEfficiency, nextList, tone, audience);
-                                                    }
-                                                    return nextList;
-                                                });
-                                            };
-                                            reader.readAsDataURL(file);
-                                        });
+                                        for (const file of files) {
+                                          try {
+                                            const base64Str = await compressImageFile(file);
+                                            if (base64Str) {
+                                              setReviewReferenceImages(prev => {
+                                                const nextList = [...prev, base64Str];
+                                                if (autoSuggestReviewIdea) {
+                                                  triggerReviewIdeaSuggestions(reviewBenefits, reviewFeatures, reviewEfficiency, nextList, tone, audience);
+                                                }
+                                                return nextList;
+                                              });
+                                            }
+                                          } catch (err) {
+                                            console.error("[Image load error]", err);
+                                          }
+                                        }
+                                        e.target.value = "";
                                       }} 
                                     />
                                   </label>
@@ -4033,23 +4131,32 @@ ${environmentVibeStr}
                             
                             <div className="pt-1 border-t border-slate-200/50">
                                 <label className="text-[10px] font-bold text-slate-500 block mb-1 uppercase font-mono">Hình ảnh tham chiếu (AI dựa vào đây review)</label>
-                                <input type="file" accept="image/*" multiple className="text-xs text-slate-600 file:mr-3 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-[#FF3B5C]/10 file:text-[#FF3B5C] hover:file:bg-[#FF3B5C]/20 file:cursor-pointer" onChange={(e) => {
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  multiple 
+                                  className="text-xs text-slate-600 file:mr-3 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-[#FF3B5C]/10 file:text-[#FF3B5C] hover:file:bg-[#FF3B5C]/20 file:cursor-pointer" 
+                                  onChange={async (e) => {
                                     const files = Array.from(e.target.files || []);
-                                    files.forEach((file: any) => {
-                                        const reader = new FileReader();
-                                        reader.onloadend = () => {
-                                            const base64Str = reader.result as string;
-                                            setReviewReferenceImages(prev => {
-                                                const nextList = [...prev, base64Str];
-                                                if (autoSuggestReviewIdea) {
-                                                    triggerReviewIdeaSuggestions(reviewBenefits, reviewFeatures, reviewEfficiency, nextList, tone, audience);
-                                                }
-                                                return nextList;
-                                            });
-                                        };
-                                        reader.readAsDataURL(file);
-                                    });
-                                }} />
+                                    for (const file of files) {
+                                      try {
+                                        const base64Str = await compressImageFile(file);
+                                        if (base64Str) {
+                                          setReviewReferenceImages(prev => {
+                                            const nextList = [...prev, base64Str];
+                                            if (autoSuggestReviewIdea) {
+                                              triggerReviewIdeaSuggestions(reviewBenefits, reviewFeatures, reviewEfficiency, nextList, tone, audience);
+                                            }
+                                            return nextList;
+                                          });
+                                        }
+                                      } catch (err) {
+                                        console.error("[Image load error]", err);
+                                      }
+                                    }
+                                    e.target.value = "";
+                                  }} 
+                                />
                                 
                                 {reviewReferenceImages.length > 0 && (
                                   <div className="mt-2.5 flex flex-wrap gap-2">
@@ -4297,11 +4404,11 @@ ${environmentVibeStr}
                         </div>
                       </div>
 
-                      {/* Submit Trigger - Big Primary hot pink button */}
+                      {/* Submit Trigger - Big Primary Electric Blue button */}
                       <button
                         type="submit"
                         disabled={isGenerating}
-                        className="w-full py-4 text-white font-extrabold rounded-full bg-[#FF3B5C] hover:bg-[#FF3B5C]/90 focus:ring-4 focus:ring-[#FF3B5C]/30 disabled:bg-slate-400 disabled:cursor-not-allowed transition duration-200 flex items-center justify-center gap-2 text-sm uppercase tracking-wide glow-primary cursor-pointer"
+                        className="w-full py-4 text-white font-extrabold rounded-full bg-gradient-to-r from-[#0B5CFF] via-[#0077FF] to-[#00C6FF] hover:opacity-95 focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200 flex items-center justify-center gap-2 text-sm uppercase tracking-wide shadow-lg shadow-blue-500/25 cursor-pointer"
                         id="generate-script-btn"
                       >
                         {isGenerating ? (
@@ -4688,12 +4795,12 @@ ${environmentVibeStr}
                         )}
 
                         {/* 1-Tap Multi-Feature Pipeline Toolbar */}
-                        <div className="mb-4 p-3 bg-gradient-to-r from-violet-600 via-[#FF3B5C] to-amber-500 rounded-2xl text-white shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="mb-4 p-3 bg-gradient-to-r from-[#0B5CFF] via-[#0077FF] to-[#00C6FF] rounded-2xl text-white shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
                             <span className="p-1.5 bg-white/20 rounded-xl text-white font-black text-xs">⚡ AI Pipeline</span>
                             <div>
                               <h4 className="font-extrabold text-xs">Tự Động Chuyển Tiến Trình Sản Xuất (1-Chạm)</h4>
-                              <p className="text-[10px] text-white/80">Không cần copy-paste, tự động liên kết sang các bộ công cụ quay & lồng tiếng</p>
+                              <p className="text-[10px] text-white/90">Không cần copy-paste, tự động liên kết sang các bộ công cụ quay & lồng tiếng</p>
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -4706,10 +4813,10 @@ ${environmentVibeStr}
                                 setSuccessMsg("⚡ Đã tự động chuyển toàn bộ thoại kịch bản vào Máy Nhắc Chữ Prompter!");
                                 setTimeout(() => setSuccessMsg(null), 4000);
                               }}
-                              className="flex-1 sm:flex-initial px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                              className="flex-1 sm:flex-initial px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                               title="Chuyển thoại sang Máy Nhắc Chữ"
                             >
-                              <Tv size={12} />
+                              <Tv size={13} />
                               <span>1. Nhắc Chữ Quay Video</span>
                             </button>
                             <button
@@ -4720,10 +4827,10 @@ ${environmentVibeStr}
                                 setSuccessMsg("⚡ Đã tự động nạp kịch bản sang Độc Thính Lồng Tiếng AI!");
                                 setTimeout(() => setSuccessMsg(null), 4000);
                               }}
-                              className="flex-1 sm:flex-initial px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                              className="flex-1 sm:flex-initial px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                               title="Chuyển sang Độc Thính Studio để lồng tiếng AI"
                             >
-                              <Headphones size={12} />
+                              <Headphones size={13} />
                               <span>2. Lồng Tiếng AI</span>
                             </button>
                             <button
@@ -4733,10 +4840,10 @@ ${environmentVibeStr}
                                 setSuccessMsg("⚡ Đã mở Lịch Đăng Video Series để lập kế hoạch!");
                                 setTimeout(() => setSuccessMsg(null), 4000);
                               }}
-                              className="flex-1 sm:flex-initial px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                              className="flex-1 sm:flex-initial px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white font-extrabold text-[11px] rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                               title="Lên lịch đăng video cho kịch bản này"
                             >
-                              <Calendar size={12} />
+                              <Calendar size={13} />
                               <span>3. Lên Lịch Đăng</span>
                             </button>
                           </div>
@@ -4755,7 +4862,7 @@ ${environmentVibeStr}
                           {activeScript.reviewIndustry && (
                             <div>
                               <p className="text-slate-400 uppercase tracking-wider font-bold text-[9px]">Ngành hàng Review</p>
-                              <p className="font-semibold text-violet-700 mt-0.5">
+                              <p className="font-semibold text-blue-700 mt-0.5">
                                 {
                                   activeScript.reviewIndustry === "beauty" ? "Mỹ phẩm / Làm đẹp 💄" :
                                   activeScript.reviewIndustry === "tech" ? "Công nghệ / Điện tử 💻" :
@@ -4773,11 +4880,11 @@ ${environmentVibeStr}
                         </div>
 
                         {/* Trend hook analysis */}
-                        <div className="mt-4 border-l-4 border-[#00F2EA] pl-3.5">
-                          <p className="text-[11px] font-mono tracking-wider font-extrabold text-[#FF3B5C] uppercase">
-                            Bí quyết lan truyền (Viral Hook)
+                        <div className="mt-4 border-l-4 border-[#0B5CFF] pl-3.5 bg-blue-50/40 p-3 rounded-r-xl">
+                          <p className="text-[11px] font-mono tracking-wider font-extrabold text-[#0B5CFF] uppercase flex items-center gap-1.5">
+                            <span>🔥</span> Bí quyết lan truyền (Viral Hook)
                           </p>
-                          <p className="text-xs text-slate-600 italic leading-relaxed mt-1">
+                          <p className="text-xs text-slate-700 italic leading-relaxed mt-1">
                             {activeScript.trendAnalysis}
                           </p>
                         </div>
@@ -4787,7 +4894,7 @@ ${environmentVibeStr}
                           {activeScript.suggestedHashtags.map((tag, idx) => (
                             <span 
                               key={idx} 
-                              className="text-[10px] font-mono font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded"
+                              className="text-[10px] font-mono font-bold bg-blue-50 text-[#0B5CFF] border border-blue-100 px-2.5 py-1 rounded-lg"
                             >
                               {tag}
                             </span>
@@ -4800,17 +4907,17 @@ ${environmentVibeStr}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5 px-1">
                           <div className="flex items-center gap-2">
                             <h3 className="font-display font-black text-slate-800 uppercase tracking-wider text-sm flex items-center gap-2">
-                              <Video size={16} className="text-[#FF3B5C]" />
+                              <Video size={16} className="text-[#0B5CFF]" />
                               <span>PHÂN CẢNH VÀ PROMPT TẠO VIDEO AI ({activeScript.scenes.length} cảnh)</span>
                             </h3>
-                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono font-semibold">9:16 Format</span>
+                            <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-mono font-semibold">9:16 Format</span>
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               type="button"
                               onClick={handleCopyAllVietnamesePrompts}
-                              className="px-3 py-1.5 bg-[#FF3B5C] hover:bg-[#E02E4E] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                              className="px-3.5 py-1.5 bg-[#0B5CFF] hover:bg-[#0948c7] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
                               title="Sao chép toàn bộ Prompt Video Tiếng Việt để dán vào Kling AI, Runway, Luma"
                             >
                               {copiedAllVietnamesePrompts ? <Check size={13} /> : <Copy size={13} />}
@@ -4820,7 +4927,7 @@ ${environmentVibeStr}
                             <button
                               type="button"
                               onClick={handleCopyAllEnglishPrompts}
-                              className="px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-violet-200"
+                              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-blue-200"
                               title="Sao chép tất cả Prompt Tiếng Anh (Gemini Omni/Runway/Luma)"
                             >
                               {copiedAllEnglishPrompts ? <Check size={13} /> : <Copy size={13} />}
@@ -4858,19 +4965,19 @@ ${environmentVibeStr}
                               onClick={() => setFocusedSceneIndex(index)}
                               className={`bg-white rounded-[24px] border transition-all duration-200 cursor-pointer p-5 lg:p-6 flex flex-col md:flex-row gap-6 ${
                                 isActive 
-                                  ? "border-l-[6px] border-l-[#FF3B5C] border-slate-300 shadow-md transform translate-x-1" 
-                                  : "border-slate-200 hover:border-slate-300 shadow-xs"
+                                  ? "border-l-[6px] border-l-[#0B5CFF] border-blue-200 shadow-md transform translate-x-1 ring-1 ring-blue-100" 
+                                  : "border-slate-200 hover:border-blue-200 shadow-xs"
                               }`}
                             >
                               {/* 1. Scene Specifications */}
                               <div className="flex-1 space-y-3.5">
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2 text-xs font-bold">
-                                    <span className="font-mono text-[#FF3B5C] bg-[#FFF1F2] px-2 py-0.5 rounded border border-[#FFF1F2]">
+                                    <span className="font-mono text-[#0B5CFF] bg-blue-50 px-2.5 py-0.5 rounded-lg border border-blue-100">
                                       {scene.timeRange}
                                     </span>
-                                    <span className="text-slate-400">|</span>
-                                    <span className="text-slate-700">CẢNH {index + 1}</span>
+                                    <span className="text-slate-300">|</span>
+                                    <span className="text-slate-800 font-extrabold uppercase">CẢNH {index + 1}</span>
                                   </div>
 
                                   <div className="flex items-center gap-2">
@@ -4878,7 +4985,7 @@ ${environmentVibeStr}
                                     <button
                                       type="button"
                                       onClick={(e) => handleDeleteScene(e, index)}
-                                      className="text-xs text-rose-500 hover:text-white hover:bg-rose-500 border border-transparent p-1 px-1.5 rounded-lg transition-colors flex items-center gap-0.5 cursor-pointer font-bold"
+                                      className="text-xs text-rose-500 hover:text-white hover:bg-rose-500 border border-transparent p-1 px-2 rounded-lg transition-colors flex items-center gap-1 cursor-pointer font-bold"
                                       title="Xóa phân cảnh này"
                                     >
                                       <Trash2 size={12} />
@@ -4917,7 +5024,7 @@ ${environmentVibeStr}
                                         type="button"
                                         onClick={() => sceneImageInputRef.current?.click()}
                                         disabled={uploadingSceneIndex === index}
-                                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition text-xs font-bold cursor-pointer"
+                                        className="flex items-center gap-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 p-2 rounded-lg transition text-xs font-bold cursor-pointer"
                                       >
                                         <Upload size={14} />
                                         <span>{uploadingSceneIndex === index ? "Đang tải..." : "Tải ảnh"}</span>
@@ -4937,7 +5044,7 @@ ${environmentVibeStr}
                                           type="text"
                                           value={tempTimeRange}
                                           onChange={(e) => setTempTimeRange(e.target.value)}
-                                          className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#FF3B5C] font-mono text-xs"
+                                          className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF] font-mono text-xs"
                                         />
                                       </div>
                                       <div>
@@ -4946,7 +5053,7 @@ ${environmentVibeStr}
                                           type="text"
                                           value={tempAudio}
                                           onChange={(e) => setTempAudio(e.target.value)}
-                                          className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#FF3B5C] text-xs"
+                                          className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF] text-xs"
                                         />
                                       </div>
                                     </div>
@@ -4956,7 +5063,7 @@ ${environmentVibeStr}
                                       <textarea
                                         value={tempVisual}
                                         onChange={(e) => setTempVisual(e.target.value)}
-                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#FF3B5C] text-xs"
+                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF] text-xs"
                                         rows={2}
                                       />
                                     </div>
@@ -4976,43 +5083,43 @@ ${environmentVibeStr}
                                       <textarea
                                         value={tempDialogue}
                                         onChange={(e) => setTempDialogue(e.target.value)}
-                                        className="w-full bg-white p-2 text-xs rounded-md border border-slate-200 outline-hidden focus:border-[#FF3B5C]"
+                                        className="w-full bg-white p-2 text-xs rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF]"
                                         rows={4}
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="font-extrabold text-[#FF3B5C] block mb-1 uppercase tracking-wider text-[9px] flex items-center gap-1">
+                                      <label className="font-extrabold text-[#0B5CFF] block mb-1 uppercase tracking-wider text-[9px] flex items-center gap-1">
                                         <Video size={10} /> Prompt Tạo Video AI (Tiếng Việt - Chuẩn Quay Dựng)
                                       </label>
                                       <textarea
                                         value={tempVietnamesePrompt}
                                         onChange={(e) => setTempVietnamesePrompt(e.target.value)}
                                         placeholder="Mô tả góc máy, chuyển động camera, ánh sáng, diễn xuất..."
-                                        className="w-full bg-white p-2 rounded-md border border-rose-200 outline-hidden focus:border-[#FF3B5C] font-sans text-xs"
+                                        className="w-full bg-white p-2 rounded-md border border-blue-200 outline-hidden focus:border-[#0B5CFF] font-sans text-xs"
                                         rows={4}
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="font-extrabold text-[#FF3B5C] block mb-1 uppercase tracking-wider text-[9px]">Prompt AI vẽ ảnh minh họa</label>
+                                      <label className="font-extrabold text-[#0B5CFF] block mb-1 uppercase tracking-wider text-[9px]">Prompt AI vẽ ảnh minh họa</label>
                                       <textarea
                                         value={tempPrompt}
                                         onChange={(e) => setTempPrompt(e.target.value)}
-                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#FF3B5C] font-mono text-xs"
+                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF] font-mono text-xs"
                                         rows={2}
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="font-extrabold text-violet-600 block mb-1 uppercase tracking-wider text-[9px] flex items-center gap-1">
+                                      <label className="font-extrabold text-blue-700 block mb-1 uppercase tracking-wider text-[9px] flex items-center gap-1">
                                         <Video size={10} /> Prompt Tạo Video AI (Tiếng Anh / Gemini Omni)
                                       </label>
                                       <textarea
                                         value={tempGeminiOmniPrompt}
                                         onChange={(e) => setTempGeminiOmniPrompt(e.target.value)}
                                         placeholder="Mô tả Avatar, Canvas, chuyển động và phân mốc thời lượng..."
-                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-violet-500 font-mono text-xs"
+                                        className="w-full bg-white p-2 rounded-md border border-slate-200 outline-hidden focus:border-[#0B5CFF] font-mono text-xs"
                                         rows={3}
                                       />
                                     </div>
@@ -5020,14 +5127,14 @@ ${environmentVibeStr}
                                 ) : (
                                   <div className="space-y-3 text-sm leading-relaxed">
                                     {/* 1. Dialogue Voiceover section with Collapsible Arrow */}
-                                    <div className="bg-slate-50 p-3.5 rounded-xl border-l-[3px] border-[#00F2EA] transition-all">
+                                    <div className="bg-slate-50 p-3.5 rounded-xl border-l-[3px] border-[#0B5CFF] transition-all">
                                       <div className="flex items-center justify-between mb-1">
                                         <div 
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             toggleDialogueCollapse(index);
                                           }}
-                                          className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-[#FF3B5C] cursor-pointer select-none hover:opacity-80 transition"
+                                          className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-[#0B5CFF] cursor-pointer select-none hover:opacity-80 transition"
                                           title={collapsedDialogues[index] ? "Nhấn để mở lời thoại" : "Nhấn để thu gọn lời thoại"}
                                         >
                                           <Mic size={12} />
@@ -5087,7 +5194,7 @@ ${environmentVibeStr}
                                           }}
                                           title="Bấm để xem đầy đủ lời thoại"
                                         >
-                                          "{scene.dialogue}" <span className="text-[#FF3B5C] font-semibold text-[10px] not-italic ml-1">(Bấm xem đầy đủ ▾)</span>
+                                          "{scene.dialogue}" <span className="text-[#0B5CFF] font-semibold text-[10px] not-italic ml-1">(Bấm xem đầy đủ ▾)</span>
                                         </p>
                                       )}
                                     </div>
@@ -5099,18 +5206,18 @@ ${environmentVibeStr}
 
                                     {/* 3. ⭐ PROMPT TẠO VIDEO AI TIẾNG VIỆT (CHUẨN KỸ THUẬT QUAY DỰNG) ⭐ */}
                                     <div 
-                                      className="bg-gradient-to-br from-rose-50/90 via-white to-amber-50/40 p-4 rounded-2xl border-2 border-[#FF3B5C]/30 shadow-xs space-y-2.5 relative overflow-hidden" 
+                                      className="bg-gradient-to-br from-blue-50/70 via-white to-cyan-50/40 p-4 rounded-2xl border-2 border-blue-200/80 shadow-xs space-y-2.5 relative overflow-hidden" 
                                       onClick={(e) => e.stopPropagation()}
                                     >
-                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-100 pb-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-100 pb-2">
                                         <div className="flex items-center gap-2">
-                                          <div className="w-7 h-7 rounded-lg bg-[#FF3B5C] text-white flex items-center justify-center shrink-0 shadow-xs font-bold text-xs">
+                                          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#0B5CFF] to-[#00C6FF] text-white flex items-center justify-center shrink-0 shadow-xs font-bold text-xs">
                                             <Video size={14} />
                                           </div>
                                           <div>
                                             <div className="flex items-center gap-1.5">
                                               <span className="text-xs font-black text-slate-900 tracking-tight uppercase">PROMPT TẠO VIDEO AI (TIẾNG VIỆT)</span>
-                                              <span className="bg-[#FF3B5C] text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider">CHUẨN QUAY DỰNG</span>
+                                              <span className="bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase tracking-wider">CHUẨN QUAY DỰNG</span>
                                             </div>
                                             <p className="text-[10px] text-slate-500 font-medium">Chi tiết: Góc máy, Chuyển động camera, Ánh sáng, Diễn xuất & Tốc độ 60fps</p>
                                           </div>
@@ -5125,7 +5232,7 @@ ${environmentVibeStr}
                                             setCopiedVietnameseIndex(index);
                                             setTimeout(() => setCopiedVietnameseIndex(null), 3000);
                                           }}
-                                          className="px-3.5 py-1.5 bg-[#FF3B5C] hover:bg-[#E02E4E] active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                                          className="px-3.5 py-1.5 bg-[#0B5CFF] hover:bg-[#0948c7] active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                                         >
                                           {copiedVietnameseIndex === index ? (
                                             <>
@@ -5142,21 +5249,21 @@ ${environmentVibeStr}
                                       </div>
 
                                       {/* Prompt Content Box */}
-                                      <div className="text-slate-800 text-xs font-sans bg-white/95 p-3.5 border border-rose-200/80 rounded-xl whitespace-pre-wrap leading-relaxed shadow-2xs max-h-[180px] overflow-y-auto custom-scrollbar font-medium">
+                                      <div className="text-slate-800 text-xs font-sans bg-white/95 p-3.5 border border-blue-200/80 rounded-xl whitespace-pre-wrap leading-relaxed shadow-2xs max-h-[180px] overflow-y-auto custom-scrollbar font-medium">
                                         {scene.vietnameseVideoPrompt || getVietnameseVideoPrompt(scene, index)}
                                       </div>
 
-                                      <div className="flex flex-wrap items-center justify-between text-[10px] text-rose-700/80 pt-0.5 gap-2 font-medium">
+                                      <div className="flex flex-wrap items-center justify-between text-[10px] text-blue-700/80 pt-0.5 gap-2 font-medium">
                                         <span>💡 Dán trực tiếp vào Kling AI, Runway Gen-3, Luma, Hailuo, Sora hoặc Pika.</span>
-                                        <span className="font-bold bg-rose-100/80 px-2 py-0.5 rounded text-rose-800">Tỷ lệ 9:16 • 60fps • 4K</span>
+                                        <span className="font-bold bg-blue-100/80 px-2 py-0.5 rounded text-blue-800">Tỷ lệ 9:16 • 60fps • 4K</span>
                                       </div>
                                     </div>
 
                                     {/* 4. 🌐 PROMPT TẠO VIDEO AI TIẾNG ANH (GEMINI OMNI / INTERNATIONAL) */}
-                                    <div className="bg-violet-50/50 p-3 rounded-xl border border-violet-100/80 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                    <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200/80 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                                       <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-violet-700">
-                                          <Video size={12} className="text-violet-600" />
+                                        <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-slate-700">
+                                          <Video size={12} className="text-[#0B5CFF]" />
                                           <span>Prompt Video Tiếng Anh (Gemini Omni / Runway / Luma)</span>
                                         </div>
                                         <button
@@ -5168,7 +5275,7 @@ ${environmentVibeStr}
                                             setCopiedOmniIndex(index);
                                             setTimeout(() => setCopiedOmniIndex(null), 3000);
                                           }}
-                                          className="text-[10px] text-violet-700 hover:text-violet-900 font-bold flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded border border-violet-200/70 shadow-2xs transition"
+                                          className="text-[10px] text-slate-700 hover:text-slate-900 font-bold flex items-center gap-1 cursor-pointer bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs transition"
                                         >
                                           {copiedOmniIndex === index ? (
                                             <>
@@ -5192,7 +5299,7 @@ ${environmentVibeStr}
 
                                 {/* Audio suggestion sound effect */}
                                 <div className="flex items-center gap-2 text-xs bg-slate-100 p-2.5 rounded-lg text-slate-600 font-mono">
-                                  <Music size={13} className="text-[#FF3B5C] animate-pulse" />
+                                  <Music size={13} className="text-[#0B5CFF] animate-pulse" />
                                   <span className="truncate">
                                     <strong className="text-slate-700 font-sans font-semibold">Âm thanh:</strong> {scene.audioSuggestion || "Nhạc nền lofi không lời nhẹ nhàng"}
                                   </span>
@@ -5224,7 +5331,7 @@ ${environmentVibeStr}
                                       e.stopPropagation();
                                       copyToClipboard(scene.illustrationPrompt, index, true);
                                     }}
-                                    className="px-3 py-1 bg-[#00F2EA]/10 hover:bg-[#00F2EA]/20 text-[#1A1B2E] border border-[#00F2EA]/30 rounded text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                                    className="px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer"
                                   >
                                     {copiedPromptIndex === index ? (
                                       <>
@@ -5233,7 +5340,7 @@ ${environmentVibeStr}
                                       </>
                                     ) : (
                                       <>
-                                        <Sparkles size={11} className="text-[#FF3B5C]" />
+                                        <Sparkles size={11} className="text-[#0B5CFF]" />
                                         <span>Lấy Prompt vẽ hình</span>
                                       </>
                                     )}
@@ -5241,18 +5348,18 @@ ${environmentVibeStr}
                                 </div>
                               </div>
 
-                                {/* 2. Visual Simulator 9:16 */}
-                                <div className="shrink-0 flex items-center justify-center">
-                                  <ImagePreview
-                                    style={activeScript.style}
-                                    illustrationPrompt={scene.illustrationPrompt}
-                                    sceneIndex={index}
-                                    imageUrl={scene.imageUrl}
-                                    onUpdateImage={(newUrl) => handleUpdateSceneImage(index, newUrl)}
-                                    userProfile={userProfile}
-                                    onIncrementImageQuota={() => incrementQuota("image")}
-                                  />
-                                </div>
+                              {/* 2. Visual Simulator 9:16 */}
+                              <div className="shrink-0 flex items-center justify-center">
+                                <ImagePreview
+                                  style={activeScript.style}
+                                  illustrationPrompt={scene.illustrationPrompt}
+                                  sceneIndex={index}
+                                  imageUrl={scene.imageUrl}
+                                  onUpdateImage={(newUrl) => handleUpdateSceneImage(index, newUrl)}
+                                  userProfile={userProfile}
+                                  onIncrementImageQuota={() => incrementQuota("image")}
+                                />
+                              </div>
 
                             </div>
                           );
@@ -5264,11 +5371,11 @@ ${environmentVibeStr}
                             type="button"
                             onClick={handleAddNewScene}
                             disabled={isAddingScene}
-                            className="px-6 py-3.5 bg-gradient-to-r from-[#FF3B5C] to-amber-500 hover:from-[#FF3B5C]/90 hover:to-amber-500/90 text-white font-extrabold text-xs rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-2 tracking-wider uppercase cursor-pointer disabled:opacity-60"
+                            className="px-6 py-3.5 bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] hover:opacity-95 text-white font-extrabold text-xs rounded-xl shadow-md hover:shadow-lg transition flex items-center gap-2 tracking-wider uppercase cursor-pointer disabled:opacity-60"
                           >
                             {isAddingScene ? (
                               <>
-                                <Loader2 size={15} className="animate-spin text-[#00F2EA]" />
+                                <Loader2 size={15} className="animate-spin text-white" />
                                 <span>Đang nhờ AI viết tiếp kịch bản...</span>
                               </>
                             ) : (
@@ -5282,8 +5389,8 @@ ${environmentVibeStr}
                       </div>
 
                       {/* Production & Post Processing tips */}
-                      <div className="bg-gradient-to-tr from-[#1A1B2E] to-[#2D2E45] rounded-[24px] p-6 text-white shadow-lg space-y-4">
-                        <div className="flex items-center gap-2 text-[#00F2EA]">
+                      <div className="bg-gradient-to-tr from-[#091E42] via-[#0B2559] to-[#091E42] rounded-[24px] p-6 text-white shadow-lg space-y-4 border border-blue-900/50">
+                        <div className="flex items-center gap-2 text-[#00C6FF]">
                           <Lightbulb size={20} className="animate-bounce" />
                           <h4 className="font-display font-black text-sm uppercase tracking-wider">
                             Lời Khuyên Quay và Hậu Kỳ Thực Chiến
@@ -5292,7 +5399,7 @@ ${environmentVibeStr}
                         <div className="space-y-2 text-xs leading-relaxed text-slate-300">
                           {activeScript.productionTips.map((tip, idx) => (
                             <div key={idx} className="flex gap-2.5 items-start">
-                              <span className="w-5 h-5 rounded-full bg-[#FF3B5C] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 text-white font-mono">
+                              <span className="w-5 h-5 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#FF5500] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5 text-white font-mono shadow-xs">
                                 {idx + 1}
                               </span>
                               <p className="flex-1">{tip}</p>
@@ -5303,30 +5410,51 @@ ${environmentVibeStr}
 
                     </div>
                   ) : (
-                    <div className="bg-white rounded-[24px] p-12 text-center border-2 border-dashed border-slate-300 shadow-xs flex flex-col items-center justify-center h-[500px]" id="empty-state-workspace">
-                      <div className="p-4 rounded-full bg-slate-100 text-[#FF3B5C] mb-4 animate-pulse">
-                        <Video size={42} />
+                    <div className="bg-white rounded-[28px] p-8 lg:p-12 text-center border-2 border-dashed border-blue-200/90 shadow-sm flex flex-col items-center justify-center min-h-[500px] relative overflow-hidden" id="empty-state-workspace">
+                      {/* Background Glow */}
+                      <div className="absolute -top-16 -right-16 w-56 h-56 bg-blue-100/40 rounded-full blur-3xl pointer-events-none" />
+                      <div className="absolute -bottom-16 -left-16 w-56 h-56 bg-cyan-100/30 rounded-full blur-3xl pointer-events-none" />
+
+                      {/* Center Icon */}
+                      <div className="p-4 rounded-3xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 text-[#0B5CFF] mb-5 shadow-xs relative">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] flex items-center justify-center text-white shadow-md shadow-blue-500/25">
+                          <Video size={28} />
+                        </div>
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF7A00] rounded-full border-2 border-white flex items-center justify-center">
+                          <Sparkles size={8} className="text-white" />
+                        </span>
                       </div>
-                      <h3 className="font-display font-extrabold text-lg text-slate-800">Khoảng Trống Chờ Ý Tưởng</h3>
-                      <p className="text-xs text-slate-500 max-w-sm mt-2 leading-relaxed">
-                        Chưa có kịch bản nào được thiết kế. Vui lòng điền các tham số kịch bản bên trái và nhấn nút <strong>"Cấu Trúc Kịch Bản Chi Tiết"</strong> để AI ra mắt siêu kịch bản ngắn bùng nổ!
+
+                      <h3 className="font-display font-extrabold text-xl text-slate-900 tracking-tight">
+                        Studio Đang Sẵn Sàng Sáng Tạo
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-md mt-2 leading-relaxed">
+                        Chưa có kịch bản nào được hiển thị. Vui lòng chọn <strong>mẫu gợi ý 1-chạm</strong> hoặc nhập chủ đề ở khung bên trái và nhấn <strong className="text-[#0B5CFF]">"Tạo Kịch Bản Video AI"</strong> để bắt đầu!
                       </p>
-                      
-                      <div className="mt-8 pt-6 border-t border-slate-100 w-full max-w-xs flex flex-col gap-2.5">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block font-mono">Hoặc chọn nhanh ý tưởng mẫu:</span>
-                        <button
-                          onClick={() => handleSelectTrend({
-                            topic: "Trải nghiệm dở khóc dở cười tại hiệu cắt tóc mất sạch lòng tin",
-                            style: ScriptStyle.COMEDY,
-                            audiences: "Tất cả mọi người",
-                            tone: "Dí dỏm hài hước tự cười bản thân",
-                            trendKeywords: "Biến hình dở tệ, nhạc buồn rầu rột, nói lời từ biệt mái tóc cũ"
-                          })}
-                          className="py-2.5 px-4 bg-slate-50 hover:bg-[#FFF1F2] text-slate-700 hover:text-[#FF3B5C] hover:border-[#FF3B5C]/30 border border-slate-200 text-xs font-semibold rounded-xl text-left transition flex items-center justify-between group cursor-pointer"
-                        >
-                          <span>🤪 Chữa rách gáy cùng sếp cắt tóc</span>
-                          <ArrowRight size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </button>
+
+                      {/* 3 Core Value Highlights */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-7 w-full max-w-xl text-left">
+                        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                          <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>⚡</span>
+                            <span>Hook 3 Giây Giữ Chân</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-snug">Kích hoạt cảm xúc người xem ngay từ giây đầu tiên.</p>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                          <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>🎥</span>
+                            <span>Góc Quay Chuẩn 9:16</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-snug">Chi tiết hành động, góc máy, ánh sáng & tốc độ khung hình.</p>
+                        </div>
+                        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                          <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>🎙️</span>
+                            <span>Đồng Bộ Nhắc Chữ</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-snug">Chuyển ngay sang Máy Nhắc Chữ & Phòng Lồng Tiếng chỉ 1 chạm.</p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -5334,6 +5462,7 @@ ${environmentVibeStr}
                 </div>
 
               </div>
+            </div>
             )}
 
             {/* TAB 2: STORED SCRIPT LIBRARY (Filtered dashboard) */}
@@ -6008,7 +6137,7 @@ ${environmentVibeStr}
 
                               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 mb-4">
                                 <audio 
-                                  src={audio.audioBase64} 
+                                  src={audio.audioUrl || audio.audioBase64} 
                                   controls 
                                   className="w-full h-8 outline-none text-xs"
                                   preload="metadata"
@@ -6021,9 +6150,17 @@ ${environmentVibeStr}
                                 type="button"
                                 onClick={() => {
                                   const link = document.createElement("a");
-                                  link.href = audio.audioBase64;
-                                  link.download = `clipflow_voiceover_${audio.audioId || audio.id || Date.now()}.mp3`;
+                                  const audioSrc = audio.audioUrl || audio.audioBase64;
+                                  const downloadName = `clipflow_voiceover_${audio.audioId || audio.id || Date.now()}.mp3`;
+                                  if (audioSrc.startsWith("/api/uploads/")) {
+                                    link.href = `${audioSrc}?download=${encodeURIComponent(downloadName)}`;
+                                  } else {
+                                    link.href = audioSrc;
+                                  }
+                                  link.download = downloadName;
+                                  document.body.appendChild(link);
                                   link.click();
+                                  document.body.removeChild(link);
                                 }}
                                 className="px-3 py-1.5 bg-[#1A1B2E] hover:bg-[#1A1B2E]/90 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                               >
@@ -6400,6 +6537,7 @@ ${environmentVibeStr}
             {activeTab === "planner" && (
               <div className="max-w-6xl mx-auto" id="series-content-planner">
                 <SeriesPlanner
+                  onCheckAuthForAI={checkAuthForAI}
                   onGenerateScriptFromEpisode={(episodeTopic, epStyle, epAudience, epTone, epKeywords) => {
                     setIdea(episodeTopic);
                     setStyle(epStyle);
@@ -6579,7 +6717,9 @@ ${environmentVibeStr}
             {/* TAB: KHO Ý TƯỞNG (IDEA REPOSITORY) */}
             {activeTab === "ideabank" && (
               <div className="max-w-7xl mx-auto animate-fade-in" id="ideabank-tab-workspace">
-                <IdeaBank onUseIdeaForScript={(ideaText, autoRun) => {
+                <IdeaBank 
+                  onCheckAuthForAI={checkAuthForAI}
+                  onUseIdeaForScript={(ideaText, autoRun) => {
                   setIdea(ideaText);
                   setActiveTab("create");
                   setSuccessMsg(`⚡ Đã tự động nạp ý tưởng "${ideaText.substring(0, 40)}..." sang Studio kịch bản!`);
@@ -6603,6 +6743,7 @@ ${environmentVibeStr}
                   onSaveDialogue={handleSaveDialogueFromPrompter} 
                   sharedCoCreateText={sharedCoCreateText}
                   sharedTeleprompterText={sharedTeleprompterText}
+                  onCheckAuthForAI={checkAuthForAI}
                   onClearSharedText={(type) => {
                     if (type === "coCreate") {
                       setSharedCoCreateText("");
@@ -6623,6 +6764,7 @@ ${environmentVibeStr}
                   onSaveAudio={handleSaveAudioFromStudio} 
                   userProfile={userProfile}
                   onIncrementVoiceQuota={() => incrementQuota("voice")}
+                  onCheckAuthForAI={checkAuthForAI}
                 />
               </div>
             )}
@@ -6650,17 +6792,125 @@ ${environmentVibeStr}
 
           </div>
 
-          {/* Minimalist modern app footer */}
-          <footer className="py-4 px-6 bg-white border-t border-slate-200 text-center text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-center gap-2" id="app-footer">
-            <div>
-              <span>© 2026 ClipFlow AI. Chế tác nội dung dọc tự hào phục vụ bởi Gemini AI.</span>
-            </div>
-            <div className="flex gap-4">
-              <span className="hover:text-slate-600 cursor-pointer">Điều khoản</span>
-              <span>•</span>
-              <span className="hover:text-slate-600 cursor-pointer">Bảo mật</span>
-              <span>•</span>
-              <span className="hover:text-slate-600 cursor-pointer">Hỗ trợ kỹ thuật</span>
+          {/* Modern cohesive ClipViral app footer */}
+          <footer className="mt-12 bg-white border-t border-slate-200/90 text-slate-600" id="app-footer">
+            <div className="max-w-7xl mx-auto px-6 py-10">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+                
+                {/* Brand & Slogan Column */}
+                <div className="md:col-span-5 space-y-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#0B5CFF] via-[#00C6FF] to-[#0B5CFF] p-[2px] shadow-md shadow-blue-500/20">
+                      <div className="w-full h-full bg-[#091E42] rounded-[14px] flex items-center justify-center">
+                        <Video size={18} className="text-[#00C6FF]" />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-display font-black text-xl tracking-tight text-slate-900">Clip</span>
+                        <span className="font-display font-black text-xl tracking-tight bg-gradient-to-r from-[#FF7A00] to-[#FF5500] bg-clip-text text-transparent">Viral</span>
+                      </div>
+                      <p className="text-[11px] font-extrabold text-[#0B5CFF] uppercase tracking-wider">Viết nhanh • Quay chất • Dễ viral</p>
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+                    Studio AI toàn diện xây dựng kịch bản video ngắn (TikTok, Reels, Shorts), tích hợp máy nhắc chữ thông minh, phòng lồng tiếng đa giọng & cẩm nang giữ chân khán giả triệu view.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Tối ưu cho:</span>
+                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">TikTok 9:16</span>
+                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">YouTube Shorts</span>
+                    <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">Meta Reels</span>
+                  </div>
+                </div>
+
+                {/* Navigation Links Column */}
+                <div className="md:col-span-4 grid grid-cols-2 gap-6 text-xs">
+                  <div>
+                    <h5 className="font-display font-extrabold text-slate-900 uppercase tracking-wider text-[11px] mb-3">Tính Năng Studio</h5>
+                    <ul className="space-y-2 text-slate-500 font-medium">
+                      <li>
+                        <button onClick={() => setActiveTab("create")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          ⚡ Tạo Kịch Bản AI
+                        </button>
+                      </li>
+                      <li>
+                        <button onClick={() => setActiveTab("prompter")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          📺 Máy Nhắc Chữ Quay Phim
+                        </button>
+                      </li>
+                      <li>
+                        <button onClick={() => setActiveTab("audio")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          🎙️ Phòng Lồng Tiếng AI
+                        </button>
+                      </li>
+                      <li>
+                        <button onClick={() => setActiveTab("planner")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          📅 Lịch Đăng Video Series
+                        </button>
+                      </li>
+                      <li>
+                        <button onClick={() => setActiveTab("library")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          🗂️ Kho Lưu Trữ Kịch Bản
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h5 className="font-display font-extrabold text-slate-900 uppercase tracking-wider text-[11px] mb-3">Hỗ Trợ & Dịch Vụ</h5>
+                    <ul className="space-y-2 text-slate-500 font-medium">
+                      <li>
+                        <button onClick={() => setActiveTab("trends")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          🔥 Ý Tưởng & Xu Hướng
+                        </button>
+                      </li>
+                      <li>
+                        <button onClick={() => setActiveTab("billing")} className="hover:text-[#0B5CFF] transition cursor-pointer">
+                          💎 Gói Cước VIP & Quota
+                        </button>
+                      </li>
+                      <li className="hover:text-slate-800 transition cursor-pointer">
+                        🔒 Bảo Mật & Đám Mây
+                      </li>
+                      <li className="hover:text-slate-800 transition cursor-pointer">
+                        📜 Điều Khoản Dịch Vụ
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Status & Support Column */}
+                <div className="md:col-span-3 space-y-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="font-extrabold text-slate-800 text-[11px]">Hệ Thống AI Hoạt Động 100%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Sử dụng các mô hình Gemini 2.5 tối tân nhất với độ trễ thấp & độ sáng tạo không giới hạn.
+                  </p>
+                  <div className="pt-1 border-t border-slate-200/60">
+                    <span className="text-[10px] text-slate-400 font-mono">Phiên bản: ClipViral 3.2 Pro Edition</span>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Bottom Copyright Bar */}
+              <div className="mt-8 pt-6 border-t border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400 font-medium">
+                <div>
+                  <span>© 2026 ClipViral AI Studio. Tự hào tối ưu bởi Gemini AI & Google Cloud Platform.</span>
+                </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="hover:text-slate-700 cursor-pointer">Chính sách bảo mật</span>
+                  <span>•</span>
+                  <span className="hover:text-slate-700 cursor-pointer">Điều khoản dịch vụ</span>
+                  <span>•</span>
+                  <span className="hover:text-slate-700 cursor-pointer">Liên hệ hỗ trợ</span>
+                </div>
+              </div>
             </div>
           </footer>
 
@@ -6894,6 +7144,94 @@ ${environmentVibeStr}
                     className="py-3 px-4 bg-gradient-to-r from-[#FF3B5C] to-red-600 hover:opacity-90 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
                   >
                     ĐĂNG XUẤT
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Google Auth Login Modal for Guests */}
+          {showAuthModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fade-in" onClick={() => setShowAuthModal(false)}>
+              <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl p-6 sm:p-8 relative overflow-hidden text-slate-800" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setShowAuthModal(false)}
+                  className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+
+                <div className="flex justify-center mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#FF3B5C] to-violet-600 p-[2px] flex items-center justify-center shrink-0 shadow-md">
+                    <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center">
+                      <Video size={20} className="text-[#FF3B5C]" />
+                    </div>
+                  </div>
+                </div>
+
+                <h3 className="text-center font-display font-black text-slate-900 text-xl tracking-tight mb-1">
+                  Kích Hoạt Gói Miễn Phí (Free Tier)
+                </h3>
+                <p className="text-center text-xs text-slate-500 mb-6 leading-relaxed">
+                  {authModalReason || "Đăng nhập Google nhanh chóng để sử dụng đầy đủ các tính năng AI sáng tạo kịch bản, lời thoại và lồng tiếng hoàn toàn miễn phí!"}
+                </p>
+
+                {errorMsg && (
+                  <div className="mb-4 p-3 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs">
+                    ⚠️ {errorMsg}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <button
+                    onClick={async () => {
+                      setErrorMsg(null);
+                      try {
+                        await signInWithGoogle();
+                        setShowAuthModal(false);
+                      } catch (e: any) {
+                        setErrorMsg(e.message || "Không thể mở Google Auth Popup. Hãy thử dùng phương thức Redirect.");
+                      }
+                    }}
+                    className="w-full py-3.5 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-extrabold text-xs tracking-wide transition-all shadow-md active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.62-.03-1.12-.22-1.51-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    <span>Đăng nhập với Google (Cửa sổ Popup)</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      setErrorMsg(null);
+                      try {
+                        await signInWithGoogleRedirect();
+                        setShowAuthModal(false);
+                      } catch (e: any) {
+                        setErrorMsg(e.message || "Không thể khởi chạy Google Redirect.");
+                      }
+                    }}
+                    className="w-full py-3 px-6 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs transition-all shadow-xs active:scale-[0.98] flex items-center justify-center gap-2.5 cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.62-.03-1.12-.22-1.51-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    <span>Đăng nhập với Google (Chuyển hướng - Redirect)</span>
+                  </button>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-slate-100 text-center">
+                  <button
+                    onClick={() => setShowAuthModal(false)}
+                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                  >
+                    Tiếp tục xem ở trạng thái Khách
                   </button>
                 </div>
               </div>

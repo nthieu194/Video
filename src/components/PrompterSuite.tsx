@@ -398,7 +398,8 @@ export default function PrompterSuite({
   onSaveDialogue,
   sharedCoCreateText,
   sharedTeleprompterText,
-  onClearSharedText
+  onClearSharedText,
+  onCheckAuthForAI
 }: { 
   savedScripts?: VideoScript[];
   savedDialogues?: PrompterDialogue[];
@@ -407,6 +408,7 @@ export default function PrompterSuite({
   sharedCoCreateText?: string;
   sharedTeleprompterText?: string;
   onClearSharedText?: (type: "coCreate" | "teleprompter") => void;
+  onCheckAuthForAI?: (featureName?: string) => boolean;
 }) {
   const [selectedScriptId, setSelectedScriptId] = useState<string>("");
   const [selectedDialogueId, setSelectedDialogueId] = useState<string>("");
@@ -628,6 +630,9 @@ export default function PrompterSuite({
   const [ideaSuccessMsg, setIdeaSuccessMsg] = useState<string | null>(null);
 
   const handleGenerateFromIdea = async () => {
+    if (onCheckAuthForAI && !onCheckAuthForAI("tính năng Chế Tác Lời Thoại AI")) {
+      return;
+    }
     if (!rawIdea.trim() && !ideaImage) {
       setGenerateError("Vui lòng nhập ý tưởng thô hoặc tải lên ảnh tham chiếu.");
       return;
@@ -702,17 +707,26 @@ export default function PrompterSuite({
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
   const [isRecording, setIsRecording] = useState(false);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const [convertedMp4Url, setConvertedMp4Url] = useState<string | null>(null);
   const [isSyncingVideo, setIsSyncingVideo] = useState(false);
   const [syncVideoSuccess, setSyncVideoSuccess] = useState(false);
   const [isConvertingToMp4, setIsConvertingToMp4] = useState(false);
+  const recordedBlobRef = useRef<Blob | null>(null);
 
   const handleSyncVideoToLibrary = async () => {
     if (!recordedVideoUrl) return;
     setIsSyncingVideo(true);
     setSaveErrorMsg(null);
     try {
-      const res = await fetch(recordedVideoUrl);
-      const blob = await res.blob();
+      let blob = recordedBlobRef.current;
+      if (!blob || blob.size === 0) {
+        const res = await fetch(recordedVideoUrl);
+        blob = await res.blob();
+      }
+      
+      if (!blob || blob.size < 100) {
+        throw new Error("Dữ liệu video quá ngắn hoặc chưa sẵn sàng. Vui lòng quay video ít nhất 1-2 giây.");
+      }
       
       const reader = new FileReader();
       const base64Promise = new Promise<string>((resolve, reject) => {
@@ -722,21 +736,34 @@ export default function PrompterSuite({
       reader.readAsDataURL(blob);
       const base64Data = await base64Promise;
 
-      const filename = `teleprompter_rec_${Date.now()}.webm`;
+      const isNativeMp4 = (blob.type || "").toLowerCase().includes("mp4");
+      const filename = isNativeMp4 
+        ? `teleprompter_rec_${Date.now()}.mp4` 
+        : `teleprompter_rec_${Date.now()}.webm`;
+
       const uploadRes = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           base64: base64Data,
-          filename
+          filename,
+          convertToMp4: true
         })
       });
 
       if (!uploadRes.ok) {
-        throw new Error("Không thể tải tệp video lên máy chủ.");
+        let msg = "Không thể tải tệp video lên máy chủ.";
+        try {
+          const errData = await uploadRes.json();
+          if (errData?.error) msg = errData.error;
+        } catch (e) {}
+        throw new Error(msg);
       }
 
       const result = await uploadRes.json();
+      if (result.imageUrl) {
+        setConvertedMp4Url(result.imageUrl);
+      }
       
       const videoTitle = "Thước phim nhắc chữ quay ngày " + new Date().toLocaleDateString("vi-VN");
       const currentUserId = auth?.currentUser?.uid || "offline_user";
@@ -763,7 +790,7 @@ export default function PrompterSuite({
       }
 
       setSyncVideoSuccess(true);
-      setSaveSuccessMsg("🎉 Đã lưu video tự quay thành công vào Thư viện của bạn!");
+      setSaveSuccessMsg("🎉 Đã chuyển đổi MP4 và lưu video vào Thư viện thành công!");
       setTimeout(() => {
         setSyncVideoSuccess(false);
         setSaveSuccessMsg(null);
@@ -781,46 +808,122 @@ export default function PrompterSuite({
     setIsConvertingToMp4(true);
     setSaveErrorMsg(null);
     try {
-      const res = await fetch(recordedVideoUrl);
-      const blob = await res.blob();
-      
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-      });
-      reader.readAsDataURL(blob);
-      const base64Data = await base64Promise;
-
-      const filename = `teleprompter_rec_${Date.now()}.webm`;
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base64: base64Data,
-          filename,
-          convertToMp4: true
-        })
-      });
-
-      if (!uploadRes.ok) {
-        throw new Error("Không thể kết nối máy chủ chuyển đổi video.");
+      let rawBlob = recordedBlobRef.current;
+      if (!rawBlob || rawBlob.size === 0) {
+        const res = await fetch(recordedVideoUrl);
+        rawBlob = await res.blob();
       }
 
-      const result = await uploadRes.json();
-      if (result.success && result.imageUrl) {
-        // Trigger browser download of the converted MP4
-        const link = document.createElement("a");
-        link.href = result.imageUrl;
-        link.download = `clipflow_teleprompter_${Date.now()}.mp4`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setSaveSuccessMsg("🎉 Đã chuyển đổi và tải tệp MP4 thành công về máy của bạn!");
-        setTimeout(() => setSaveSuccessMsg(null), 4000);
+      if (!rawBlob || rawBlob.size < 100) {
+        throw new Error("Dữ liệu video quá ngắn hoặc chưa sẵn sàng. Vui lòng quay video ít nhất 1-2 giây.");
+      }
+
+      const downloadFileName = `clipflow_teleprompter_${Date.now()}.mp4`;
+      const isNativeMp4 = (rawBlob.type || "").toLowerCase().includes("mp4");
+
+      let finalMp4Blob: Blob;
+      let finalMp4Url: string | null = convertedMp4Url;
+
+      // If browser recorded natively in MP4 (iOS Safari / Apple WebKit), use raw MP4 blob directly
+      if (isNativeMp4 && rawBlob.size > 0) {
+        finalMp4Blob = new Blob([rawBlob], { type: "video/mp4" });
       } else {
-        throw new Error("Chuyển đổi video thất bại.");
+        // Otherwise transcode via server FFmpeg into standard H.264 MP4
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(rawBlob);
+        const base64Data = await base64Promise;
+
+        const filename = `teleprompter_rec_${Date.now()}.webm`;
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            base64: base64Data,
+            filename,
+            convertToMp4: true
+          })
+        });
+
+        if (!uploadRes.ok) {
+          let msg = "Không thể kết nối máy chủ chuyển đổi video.";
+          try {
+            const errData = await uploadRes.json();
+            if (errData?.error) msg = errData.error;
+          } catch (e) {}
+          throw new Error(msg);
+        }
+
+        const result = await uploadRes.json();
+        if (!result.success || !result.imageUrl) {
+          throw new Error("Chuyển đổi video thất bại.");
+        }
+
+        finalMp4Url = result.imageUrl;
+        setConvertedMp4Url(result.imageUrl);
+
+        // Fetch converted MP4 as arrayBuffer to create a genuine video/mp4 Blob if possible
+        try {
+          const mp4FetchRes = await fetch(result.imageUrl);
+          if (mp4FetchRes.ok) {
+            const mp4ArrayBuf = await mp4FetchRes.arrayBuffer();
+            finalMp4Blob = new Blob([mp4ArrayBuf], { type: "video/mp4" });
+          }
+        } catch (fetchErr) {
+          console.warn("Direct blob fetch bypassed, using server direct download URL:", fetchErr);
+        }
       }
+
+      let sharedViaNativeSheet = false;
+      const directServerDownloadUrl = finalMp4Url?.startsWith("/api/uploads/") 
+        ? `${finalMp4Url}?download=${encodeURIComponent(downloadFileName)}` 
+        : (finalMp4Url || "");
+
+      // Try Web Share API for iOS / mobile browsers (allows directly saving to Apple Photos Camera Roll)
+      if (finalMp4Blob! && typeof navigator !== "undefined" && navigator.canShare && typeof File !== "undefined") {
+        try {
+          const videoFile = new File([finalMp4Blob], downloadFileName, { type: "video/mp4" });
+          if (navigator.canShare({ files: [videoFile] })) {
+            await navigator.share({
+              files: [videoFile],
+              title: "Thước phim MP4 - ClipViral",
+              text: "Video thu từ máy nhắc chữ thông minh ClipViral (Viết nhanh. Quay chất. Dễ viral.)"
+            });
+            sharedViaNativeSheet = true;
+          }
+        } catch (shareErr: any) {
+          console.log("Web Share action completed or dismissed:", shareErr);
+        }
+      }
+
+      // Always trigger anchor download if native share was not used
+      if (!sharedViaNativeSheet) {
+        if (finalMp4Blob!) {
+          const mp4BlobUrl = URL.createObjectURL(finalMp4Blob);
+          const link = document.createElement("a");
+          link.href = mp4BlobUrl;
+          link.download = downloadFileName;
+          link.setAttribute("type", "video/mp4");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => URL.revokeObjectURL(mp4BlobUrl), 15000);
+        } else if (directServerDownloadUrl) {
+          const link = document.createElement("a");
+          link.href = directServerDownloadUrl;
+          link.download = downloadFileName;
+          link.target = "_blank";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      }
+
+      setSaveSuccessMsg("🎉 Đã xuất video định dạng MP4 chuẩn tương thích mọi thiết bị!");
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error("Lỗi chuyển đổi MP4:", err);
       setSaveErrorMsg("Có lỗi xảy ra khi chuyển đổi sang MP4: " + err.message);
@@ -1035,28 +1138,33 @@ export default function PrompterSuite({
     }
     recordedChunksRef.current = [];
     setRecordedVideoUrl(null);
+    setConvertedMp4Url(null);
     
-    let options: any = {};
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=h264')) {
-      options = { mimeType: 'video/webm;codecs=h264', videoBitsPerSecond: 1500000, audioBitsPerSecond: 128000 };
-    } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
-      options = { mimeType: 'video/mp4;codecs=h264', videoBitsPerSecond: 1500000, audioBitsPerSecond: 128000 };
-    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
-      options = { mimeType: 'video/webm;codecs=vp8', videoBitsPerSecond: 1500000, audioBitsPerSecond: 128000 };
-    } else if (MediaRecorder.isTypeSupported('video/webm')) {
-      options = { mimeType: 'video/webm', videoBitsPerSecond: 1500000, audioBitsPerSecond: 128000 };
-    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-      options = { mimeType: 'video/mp4', videoBitsPerSecond: 1500000, audioBitsPerSecond: 128000 };
-    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
-      options = { mimeType: 'video/webm;codecs=vp9', videoBitsPerSecond: 1200000, audioBitsPerSecond: 128000 };
+    // Choose the best supported codec cleanly without strict bitrates that fail on mobile
+    const candidates = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=h264,opus',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
+    
+    let options: MediaRecorderOptions | undefined = undefined;
+    for (const cand of candidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(cand)) {
+        options = { mimeType: cand };
+        break;
+      }
     }
     
     try {
       let recorder: MediaRecorder;
       try {
-        recorder = new MediaRecorder(streamRef.current, options);
+        recorder = options ? new MediaRecorder(streamRef.current, options) : new MediaRecorder(streamRef.current);
       } catch (optErr) {
-        console.warn("Could not start MediaRecorder with mimeType options, trying default...", optErr);
+        console.warn("Could not start MediaRecorder with preferred mimeType, trying browser default...", optErr);
         try {
           recorder = new MediaRecorder(streamRef.current);
         } catch (defErr) {
@@ -1072,8 +1180,21 @@ export default function PrompterSuite({
         }
       };
       recorder.onstop = () => {
-        const mimeTypeUsed = recorder.mimeType || 'video/webm';
+        if (recordedChunksRef.current.length === 0) {
+          console.warn("[MediaRecorder] Không thu được chunk nào.");
+          setSaveErrorMsg("Không nhận được dữ liệu quay từ Camera. Vui lòng bấm quay lại.");
+          setTimeout(() => setSaveErrorMsg(null), 5000);
+          return;
+        }
+        const mimeTypeUsed = recorder.mimeType || options?.mimeType || 'video/webm';
         const blob = new Blob(recordedChunksRef.current, { type: mimeTypeUsed });
+        if (blob.size < 500) {
+          console.warn("[MediaRecorder] Ghi hình quá ngắn hoặc không có dữ liệu (size < 500B):", blob.size);
+          setSaveErrorMsg("Bản ghi quá ngắn. Vui lòng bấm quay và thử lại ít nhất 1-2 giây.");
+          setTimeout(() => setSaveErrorMsg(null), 5000);
+          return;
+        }
+        recordedBlobRef.current = blob;
         const url = URL.createObjectURL(blob);
         setRecordedVideoUrl(url);
       };
@@ -1085,9 +1206,7 @@ export default function PrompterSuite({
       };
       
       mediaRecorderRef.current = recorder;
-      // Sử dụng khoảng thời gian 1000ms (1 giây) thay vì 10ms để giảm tải CPU tối đa,
-      // tránh tình trạng drop khung hình (gây màn hình đen) trong quá trình ghi hình.
-      recorder.start(1000);
+      recorder.start(500);
       setIsRecording(true);
       
       // Auto scroll!
@@ -1104,7 +1223,18 @@ export default function PrompterSuite({
       resumeTimeoutRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
+      try {
+        if (mediaRecorderRef.current.state === "recording" || mediaRecorderRef.current.state === "paused") {
+          mediaRecorderRef.current.requestData();
+        }
+      } catch (reqErr) {
+        console.warn("requestData error before stop:", reqErr);
+      }
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (stopErr) {
+        console.warn("stop error:", stopErr);
+      }
     }
     setIsRecording(false);
     setIsRecordingPaused(false);
@@ -1304,6 +1434,9 @@ export default function PrompterSuite({
 
   // Handle direct AI chat logic
   const handleSendChat = async (directText?: string) => {
+    if (onCheckAuthForAI && !onCheckAuthForAI("tính năng Trợ Lý Sửa Lời Thoại AI")) {
+      return;
+    }
     const textToSend = directText || chatInput;
     if (!textToSend.trim()) return;
 
@@ -1428,6 +1561,7 @@ export default function PrompterSuite({
               {/* Creative Idea Mixer (4 categories preset) */}
               <IdeaMixer 
                 isDarkTheme={true}
+                onCheckAuthForAI={onCheckAuthForAI}
                 onMixSuccess={(generatedIdea) => {
                   setRawIdea(generatedIdea);
                   const textEl = document.getElementById("raw-idea-textarea") as HTMLTextAreaElement;
@@ -2780,7 +2914,24 @@ export default function PrompterSuite({
                             </>
                           )}
                         </button>
+
+                        {convertedMp4Url && (
+                          <a
+                            href={convertedMp4Url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-4 py-2.5 bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 font-bold text-xs rounded-xl shadow-lg transition duration-150 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Film size={14} />
+                            <span>Mở MP4 Tab mới ↗</span>
+                          </a>
+                        )}
                       </div>
+
+                      <p className="text-[11px] text-[#00F2EA]/90 bg-[#00F2EA]/10 p-2.5 rounded-xl border border-[#00F2EA]/20 flex items-center gap-2 font-medium">
+                        <span>📱</span>
+                        <span><b>Dành cho iPhone/Android:</b> Tệp được chuyển đổi sang chuẩn H.264 MP4. Bạn có thể chọn <i>"Lưu video"</i> vào Thư viện Ảnh (Photos/Gallery) để xem và chia sẻ lên TikTok/CapCut.</span>
+                      </p>
                     </div>
                   </div>
                 </div>

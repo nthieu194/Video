@@ -1,6 +1,6 @@
 {
-  "name": "Video",
-  "description": "Ứng dụng xây dựng và quản lý kịch bản video ngắn tự động sử dụng AI.",
+  "name": "ClipViral - Viết Nhanh Quay Chất Dễ Viral",
+  "description": "Studio sáng tạo kịch bản video ngắn AI chuyên sâu (TikTok, Reels, Shorts), tích hợp máy nhắc chữ, phòng lồng tiếng và lập kế hoạch nội dung đa nền tảng.",
   "requestFramePermissions": [
     "camera",
     "microphone"

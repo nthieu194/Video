@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -6,16 +6,18 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  --color-brand-primary: #FF3B5C;
-  --color-brand-secondary: #00F2EA;
-  --color-brand-dark: #1A1B2E;
-  --color-brand-light: #F0F2F5;
+  --color-brand-primary: #0B5CFF;
+  --color-brand-cyan: #00C6FF;
+  --color-brand-orange: #FF7A00;
+  --color-brand-amber: #FFC107;
+  --color-brand-dark: #091E42;
+  --color-brand-light: #F8FBFF;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #F0F2F5;
-  color: #1A1B2E;
+  background-color: #F8FBFF;
+  color: #091E42;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -35,12 +37,39 @@ body {
   background: #94A3B8;
 }
 
+.glow-blue {
+  box-shadow: 0 6px 20px rgba(11, 92, 255, 0.28);
+}
+
+.glow-orange {
+  box-shadow: 0 6px 20px rgba(255, 122, 0, 0.28);
+}
+
+.glow-cyan {
+  box-shadow: 0 6px 20px rgba(0, 198, 255, 0.25);
+}
+
 .glow-primary {
-  box-shadow: 0 4px 15px rgba(255, 59, 92, 0.3);
+  box-shadow: 0 6px 20px rgba(11, 92, 255, 0.28);
 }
 
 .glow-secondary {
-  box-shadow: 0 4px 15px rgba(0, 242, 234, 0.2);
+  box-shadow: 0 6px 20px rgba(255, 122, 0, 0.25);
+}
+
+/* ClipViral Gradient Utilities */
+.bg-clipviral-gradient {
+  background: linear-gradient(135deg, #0B5CFF 0%, #00C6FF 100%);
+}
+
+.bg-clipviral-fire {
+  background: linear-gradient(135deg, #FF7A00 0%, #FFC107 100%);
+}
+
+.bg-clipviral-hero {
+  background: radial-gradient(circle at top right, rgba(0, 198, 255, 0.15), transparent 50%),
+              radial-gradient(circle at bottom left, rgba(255, 122, 0, 0.12), transparent 50%),
+              linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%);
 }
 
 @keyframes karaoke-wipe {
@@ -54,7 +83,7 @@ body {
 
 .karaoke-line {
   display: block;
-  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%);
+  background-image: linear-gradient(to right, #00C6FF 50%, rgba(255, 255, 255, 0.3) 50%);
   background-size: 200% 100%;
   background-position: 100% 0;
   -webkit-background-clip: text;
@@ -66,7 +95,7 @@ body {
 
 .karaoke-word {
   display: inline-block;
-  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%);
+  background-image: linear-gradient(to right, #00C6FF 50%, rgba(255, 255, 255, 0.3) 50%);
   background-size: 200% 100%;
   background-position: 100% 0;
   -webkit-background-clip: text;
@@ -80,12 +109,12 @@ body {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
-  -webkit-text-fill-color: #00F2EA !important;
-  color: #00F2EA !important;
+  -webkit-text-fill-color: #00C6FF !important;
+  color: #00C6FF !important;
 }
 
 .karaoke-word.active-wipe {
-  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%) !important;
+  background-image: linear-gradient(to right, #00C6FF 50%, rgba(255, 255, 255, 0.3) 50%) !important;
   background-size: 200% 100% !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;
@@ -106,12 +135,12 @@ body {
   background-image: none !important;
   -webkit-background-clip: border-box !important;
   background-clip: border-box !important;
-  -webkit-text-fill-color: #00F2EA !important;
-  color: #00F2EA !important;
+  -webkit-text-fill-color: #00C6FF !important;
+  color: #00C6FF !important;
 }
 
 .karaoke-line.active {
-  background-image: linear-gradient(to right, #00F2EA 50%, rgba(255, 255, 255, 0.3) 50%) !important;
+  background-image: linear-gradient(to right, #00C6FF 50%, rgba(255, 255, 255, 0.3) 50%) !important;
   background-size: 200% 100% !important;
   -webkit-background-clip: text !important;
   background-clip: text !important;

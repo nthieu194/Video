@@ -169,13 +169,15 @@ if (typeof window !== "undefined") {
     console.warn("[Storage Shield] Prototype overrides could not be fully attached:", err);
   }
 
-  const handleIndexedDbError = (errorMsg: string, errObj: any) => {
-    const serializedError = errorMsg + " " + String(errObj || "") + " " + (errObj?.message || "");
+  const handleGlobalBenignErrors = (errorMsg: string, errObj: any) => {
+    const serializedError = (errorMsg + " " + String(errObj || "") + " " + (errObj?.message || "")).toLowerCase();
+    
+    // 1. IndexedDB disconnect in sandboxed iframe
     const isIndexedDbError = 
-      serializedError.toLowerCase().includes('indexed database') || 
-      serializedError.toLowerCase().includes('indexeddb') ||
-      serializedError.toLowerCase().includes('database connection lost') ||
-      serializedError.toLowerCase().includes('connection to indexed database');
+      serializedError.includes('indexed database') || 
+      serializedError.includes('indexeddb') ||
+      serializedError.includes('database connection lost') ||
+      serializedError.includes('connection to indexed database');
 
     if (isIndexedDbError) {
       console.warn("[Mitigation] Intercepted IndexedDB server connection lost in sandbox iframe:", errorMsg, errObj);
@@ -192,19 +194,33 @@ if (typeof window !== "undefined") {
       }
       return true; // prevent default error logging / crash overlay
     }
+
+    // 2. Benign WebKit/Safari network load aborts or transient fetch interrupts ("Load failed", "Failed to fetch")
+    const isBenignNetworkError =
+      serializedError.includes('load failed') ||
+      serializedError.includes('failed to fetch') ||
+      serializedError.includes('the operation was aborted') ||
+      serializedError.includes('aborterror') ||
+      serializedError.includes('network request failed');
+
+    if (isBenignNetworkError) {
+      console.warn("[Mitigation] Handled transient network/loading event:", errorMsg);
+      return true;
+    }
+
     return false;
   };
 
   window.addEventListener('unhandledrejection', (event) => {
     const msg = event.reason ? (event.reason.message || String(event.reason)) : '';
-    if (handleIndexedDbError(msg, event.reason)) {
+    if (handleGlobalBenignErrors(msg, event.reason)) {
       event.preventDefault();
     }
   });
 
   window.addEventListener('error', (event) => {
     const msg = event.message || '';
-    if (handleIndexedDbError(msg, event.error)) {
+    if (handleGlobalBenignErrors(msg, event.error)) {
       event.preventDefault();
     }
   });

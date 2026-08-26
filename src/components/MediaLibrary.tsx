@@ -227,71 +227,127 @@ export default function MediaLibrary({ scripts, onDeleteScriptImage }: MediaLibr
 
   const handleDownloadMedia = async (url: string, filename: string, category?: string) => {
     try {
-      let blob: Blob;
+      let blob: Blob | null = null;
+      let effectiveMime = "";
+
       if (url.startsWith("data:")) {
         // Convert data URL to Blob directly without fetching
         const arr = url.split(",");
         const mimeMatch = arr[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : "";
+        effectiveMime = mimeMatch ? mimeMatch[1].toLowerCase() : "";
         const bstr = atob(arr[1]);
         let n = bstr.length;
         const u8arr = new Uint8Array(n);
         while (n--) {
           u8arr[n] = bstr.charCodeAt(n);
         }
-        blob = new Blob([u8arr], { type: mime });
+        blob = new Blob([u8arr], { type: effectiveMime || "application/octet-stream" });
       } else {
-        const response = await fetch(url);
-        blob = await response.blob();
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            blob = await response.blob();
+            effectiveMime = (blob.type || "").toLowerCase();
+          }
+        } catch (fetchErr) {
+          console.warn("Direct blob fetch bypassed for media download:", fetchErr);
+        }
       }
 
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      
-      // Determine file extension in order of priority:
-      // 1. Inspect blob.type (MIME type)
-      // 2. Check category
-      // 3. Inspect URL content
-      // 4. Default fallback
+      // Check URL extension first for reliable detection
+      const urlClean = url.split("?")[0].toLowerCase();
       let ext = "";
-      const mime = blob.type ? blob.type.toLowerCase() : "";
-      
-      if (mime.includes("audio/mpeg") || mime.includes("audio/mp3") || mime.includes("mpeg") || mime.includes("mp3")) {
-        ext = ".mp3";
-      } else if (mime.includes("audio/wav") || mime.includes("audio/x-wav") || mime.includes("wave") || mime.includes("wav") || mime.includes("x-pn-wav")) {
-        ext = ".wav";
-      } else if (mime.includes("video/webm") || mime.includes("audio/webm") || mime.includes("webm")) {
-        ext = ".webm";
-      } else if (mime.includes("video/mp4") || mime.includes("mp4")) {
+
+      if (urlClean.endsWith(".mp4") || category === "Video Recording" || filename.toLowerCase().endsWith(".mp4")) {
         ext = ".mp4";
-      } else if (mime.includes("image/png") || mime.includes("png")) {
+        if (blob && (!blob.type || !blob.type.includes("mp4"))) {
+          blob = new Blob([blob], { type: "video/mp4" });
+        }
+      } else if (urlClean.endsWith(".webm") || filename.toLowerCase().endsWith(".webm")) {
+        ext = ".webm";
+        if (blob && (!blob.type || !blob.type.includes("webm"))) {
+          blob = new Blob([blob], { type: "video/webm" });
+        }
+      } else if (urlClean.endsWith(".mp3") || category === "AI Voiceover" || filename.toLowerCase().endsWith(".mp3")) {
+        ext = ".mp3";
+        if (blob && (!blob.type || !blob.type.includes("audio"))) {
+          blob = new Blob([blob], { type: "audio/mpeg" });
+        }
+      } else if (urlClean.endsWith(".wav") || filename.toLowerCase().endsWith(".wav")) {
+        ext = ".wav";
+        if (blob && (!blob.type || !blob.type.includes("audio"))) {
+          blob = new Blob([blob], { type: "audio/wav" });
+        }
+      } else if (effectiveMime.includes("audio/mpeg") || effectiveMime.includes("audio/mp3")) {
+        ext = ".mp3";
+      } else if (effectiveMime.includes("audio/wav") || effectiveMime.includes("audio/x-wav")) {
+        ext = ".wav";
+      } else if (effectiveMime.includes("video/mp4")) {
+        ext = ".mp4";
+      } else if (effectiveMime.includes("video/webm")) {
+        ext = ".webm";
+      } else if (effectiveMime.includes("image/png") || category === "AI Generated") {
         ext = ".png";
-      } else if (mime.includes("image/jpeg") || mime.includes("image/jpg") || mime.includes("jpeg")) {
+      } else if (effectiveMime.includes("image/jpeg") || effectiveMime.includes("image/jpg")) {
         ext = ".jpg";
-      } else if (mime.includes("image/webp") || mime.includes("webp")) {
+      } else if (effectiveMime.includes("image/webp")) {
         ext = ".webp";
-      } else if (mime.includes("image/gif") || mime.includes("gif")) {
+      } else if (effectiveMime.includes("image/gif")) {
         ext = ".gif";
-      } else if (category === "AI Voiceover") {
-        ext = url.includes("mp3") ? ".mp3" : ".wav";
-      } else if (category === "AI Generated") {
-        ext = ".png";
       } else {
-        if (url.includes(".webm")) ext = ".webm";
-        else if (url.includes(".mp4")) ext = ".mp4";
-        else if (url.includes(".mp3") || url.includes("audio/mp3") || url.startsWith("data:audio/mp3")) ext = ".mp3";
-        else if (url.includes(".wav") || url.includes("audio/wav") || url.startsWith("data:audio/wav") || url.startsWith("data:audio/x-wav")) ext = ".wav";
-        else ext = ".png"; // absolute fallback
+        ext = ".png";
       }
 
       // Sanitize only illegal filename characters to preserve Vietnamese accents and spaces perfectly
-      const cleanName = filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").replace(/\s+/g, " ").trim() || "media_file";
-      link.download = `${cleanName}${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
+      let cleanName = filename.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").replace(/\s+/g, " ").trim() || "media_file";
+      // Remove trailing existing ext if repeated
+      if (cleanName.toLowerCase().endsWith(ext)) {
+        cleanName = cleanName.slice(0, -ext.length);
+      }
+      const fullFileName = `${cleanName}${ext}`;
+
+      // On mobile / iOS, if it's a video/audio/image and blob is available, attempt Web Share API
+      let sharedViaSheet = false;
+      if (blob && typeof navigator !== "undefined" && navigator.canShare && typeof File !== "undefined") {
+        try {
+          const fileToShare = new File([blob], fullFileName, { type: blob.type || "application/octet-stream" });
+          if (navigator.canShare({ files: [fileToShare] })) {
+            await navigator.share({
+              files: [fileToShare],
+              title: cleanName,
+              text: `Tệp đa phương tiện: ${fullFileName}`
+            });
+            sharedViaSheet = true;
+          }
+        } catch (shareErr: any) {
+          console.log("Media share dismissed or completed:", shareErr);
+        }
+      }
+
+      if (!sharedViaSheet) {
+        if (blob) {
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = fullFileName;
+          if (blob.type) {
+            link.setAttribute("type", blob.type);
+          }
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+        } else {
+          const downloadUrl = url.startsWith("/api/uploads/") ? `${url}?download=${encodeURIComponent(fullFileName)}` : url;
+          const link = document.createElement("a");
+          link.href = downloadUrl;
+          link.download = fullFileName;
+          link.target = "_blank";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      }
     } catch (err) {
       console.error("Lỗi khi tải tệp về:", err);
       // Fallback: Open in new window
@@ -473,7 +529,7 @@ export default function MediaLibrary({ scripts, onDeleteScriptImage }: MediaLibr
         }
       }
 
-      setSuccessMessage(`Tải ảnh "${file.name}" lên thư viện ClipFlow thành công!`);
+      setSuccessMessage(`Tải ảnh "${file.name}" lên thư viện ClipViral thành công!`);
       setTimeout(() => setSuccessMessage(null), 4500);
 
     } catch (err: any) {
