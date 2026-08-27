@@ -13,7 +13,8 @@ import {
   Loader2,
   Lock,
   Wallet,
-  Copy
+  Copy,
+  ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { db, auth } from "../lib/firebase";
@@ -257,7 +258,7 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
 
   // Fetch dynamic PayOS payment link when a plan is selected
   useEffect(() => {
-    if (selectedPlan && paymentMethod === "vietqr") {
+    if (selectedPlan) {
       const fetchPayOSLink = async () => {
         setIsLoadingPayOS(true);
         setPayosData(null);
@@ -288,7 +289,7 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
     } else {
       setPayosData(null);
     }
-  }, [selectedPlan, paymentMethod, userId, userProfile?.email]);
+  }, [selectedPlan, userId, userProfile?.email]);
 
   // Safe limits checker helper
   const scriptCount = userProfile?.scriptCountToday || 0;
@@ -1019,53 +1020,19 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
                     </div>
                   </div>
 
-                  {/* Right: Payment form with options */}
-                  <div className="flex-1 p-6 lg:p-8 space-y-6">
+                  {/* Right: Streamlined PayOS Payment Checkout */}
+                  <div className="flex-1 p-6 lg:p-8 space-y-6 flex flex-col justify-between">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold font-display">Chọn phương thức thanh toán</h3>
-                      <button onClick={resetPaymentModal} className="text-slate-400 hover:text-white font-bold">&times;</button>
-                    </div>
-
-                    {/* Method selector */}
-                    <div className="grid grid-cols-3 gap-2.5">
-                      <button 
-                        type="button"
-                        onClick={() => setPaymentMethod("vietqr")}
-                        className={`py-3 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                          paymentMethod === "vietqr" 
-                            ? "border-[#00F2EA] bg-[#00F2EA]/5 text-[#00F2EA]" 
-                            : "border-[#2D2E45] hover:bg-white/5 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <QrCode size={18} />
-                        <span className="text-[10px] font-bold">Chuyển khoản QR</span>
-                      </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => setPaymentMethod("card")}
-                        className={`py-3 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                          paymentMethod === "card" 
-                            ? "border-[#00F2EA] bg-[#00F2EA]/5 text-[#00F2EA]" 
-                            : "border-[#2D2E45] hover:bg-white/5 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <CreditCard size={18} />
-                        <span className="text-[10px] font-bold">Thẻ Quốc Tế</span>
-                      </button>
-
-                      <button 
-                        type="button"
-                        onClick={() => setPaymentMethod("wallet")}
-                        className={`py-3 px-2.5 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer ${
-                          paymentMethod === "wallet" 
-                            ? "border-[#00F2EA] bg-[#00F2EA]/5 text-[#00F2EA]" 
-                            : "border-[#2D2E45] hover:bg-white/5 text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        <Wallet size={18} />
-                        <span className="text-[10px] font-bold">MoMo/E-Wallet</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-[#00F2EA]/15 border border-[#00F2EA]/30 flex items-center justify-center text-[#00F2EA]">
+                          <Sparkles size={16} />
+                        </div>
+                        <div>
+                          <h3 className="text-base sm:text-lg font-bold font-display text-white">Thanh toán qua Cổng PayOS</h3>
+                          <p className="text-[11px] text-slate-400">Chuyển tiếp trực tiếp sang cổng thanh toán bảo mật</p>
+                        </div>
+                      </div>
+                      <button onClick={resetPaymentModal} className="text-slate-400 hover:text-white font-bold text-xl px-2 py-1">&times;</button>
                     </div>
 
                     {paymentError && (
@@ -1075,239 +1042,103 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
                       </div>
                     )}
 
-                    <form onSubmit={handleCheckoutSubmit} className="space-y-4">
-                      {/* VietQR View */}
-                      {paymentMethod === "vietqr" && (
-                        <div className="space-y-4 text-center animate-fadeIn">
-                          {isLoadingPayOS ? (
-                            <div className="py-12 flex flex-col items-center justify-center space-y-3">
-                              <Loader2 className="animate-spin text-[#00F2EA]" size={36} />
-                              <p className="text-xs text-slate-400">Đang khởi tạo giao dịch PayOS bảo mật...</p>
-                            </div>
-                          ) : payosData ? (
-                            <div className="space-y-4 text-center">
-                              <div className="p-3.5 bg-cyan-950/40 border border-[#00F2EA]/30 rounded-2xl max-w-sm mx-auto">
-                                <p className="text-xs text-[#00F2EA] font-semibold mb-1 flex items-center justify-center gap-1.5">
-                                  <Sparkles size={13} className="animate-pulse" />
-                                  <span>Đã tạo cổng thanh toán động PayOS!</span>
-                                </p>
-                                <p className="text-[10px] text-slate-300 leading-relaxed">
-                                  Một mã thanh toán duy nhất đã được tạo riêng cho bạn. Bạn có thể quét mã QR dưới đây hoặc bấm nút để mở cổng thanh toán bảo mật.
-                                </p>
-                              </div>
-
-                              <div className="bg-white rounded-2xl p-4 inline-block shadow-lg mx-auto relative overflow-hidden border border-slate-200">
-                                <img 
-                                  src={`https://img.vietqr.io/image/${payosData.bin || 'mbbank'}-${payosData.accountNumber || '0363798989'}-print.png?amount=${payosData.amount}&addInfo=${encodeURIComponent(payosData.description)}&accountName=${encodeURIComponent(payosData.accountName || 'NGUYEN TRONG HIEU')}`}
-                                  alt="PayOS Dynamic QR" 
-                                  className="w-[200px] h-[200px] object-contain mx-auto"
-                                />
-                                <div className="text-[8px] text-slate-500 mt-1 font-bold tracking-wider font-mono uppercase">Mã QR Động PayOS - Chỉ áp dụng cho giao dịch này</div>
-                              </div>
-
-                              <div className="pt-1 flex flex-col gap-2">
-                                <a 
-                                  href={payosData.checkoutUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="w-full max-w-sm mx-auto py-3 bg-gradient-to-r from-[#00F2EA] to-cyan-400 hover:from-[#00d2cc] hover:to-cyan-500 text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-md cursor-pointer animate-pulse uppercase tracking-wider"
-                                >
-                                  <Sparkles size={14} />
-                                  <span>Mở Cổng Thanh Toán PayOS (Khuyên Dùng)</span>
-                                </a>
-                              </div>
-
-                              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-left text-xs space-y-1.5 max-w-md mx-auto">
-                                <div className="flex justify-between border-b border-white/5 pb-1">
-                                  <span className="text-slate-400">Số tiền cần chuyển:</span>
-                                  <span className="font-bold text-[#00F2EA] text-sm">{(payosData.amount || PLANS[selectedPlan].priceNum).toLocaleString()}đ</span>
-                                </div>
-                                <div className="flex justify-between border-b border-white/5 pb-1">
-                                  <span className="text-slate-400">Nội dung chuyển khoản:</span>
-                                  <span className="font-mono font-bold text-amber-400 uppercase select-all">{payosData.description}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Mã hóa đơn (Order Code):</span>
-                                  <span className="font-mono font-bold text-slate-300">#{payosData.orderCode}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-4 text-center">
-                              <p className="text-[11px] text-slate-300 max-w-sm mx-auto">
-                                Quét mã VietQR bằng bất kỳ ứng dụng ngân hàng di động nào (Vietcombank, Techcombank, MB, v.v.) để chuyển khoản tức thì.
-                              </p>
-
-                              <div className="bg-white rounded-2xl p-4 inline-block shadow-lg mx-auto relative overflow-hidden border border-slate-200">
-                                {/* Render QR code via open vietqr api */}
-                                <img 
-                                  src={`https://img.vietqr.io/image/mbbank-0363798989-print.png?amount=${PLANS[selectedPlan].priceNum}&addInfo=CLIPVIRAL%20${selectedPlan.toUpperCase()}%20${userId}&accountName=NGUYEN%20TRONG%20HIEU`}
-                                  alt="VietQR ClipViral Payment" 
-                                  className="w-[200px] h-[200px] object-contain mx-auto"
-                                />
-                                <div className="text-[8px] text-slate-500 mt-1 font-bold tracking-wider font-mono">QUÉT ĐỂ TỰ ĐỘNG ĐIỀN THÔNG TIN</div>
-                              </div>
-
-                              <div className="bg-white/5 border border-white/10 rounded-xl p-3.5 text-left text-xs space-y-1.5 max-w-md mx-auto">
-                                <div className="flex justify-between border-b border-white/5 pb-1">
-                                  <span className="text-slate-400">Ngân hàng thụ hưởng:</span>
-                                  <span className="font-bold text-white">MB Bank (TMCP Quân Đội)</span>
-                                </div>
-                                <div className="flex justify-between border-b border-white/5 pb-1">
-                                  <span className="text-slate-400">Số tài khoản:</span>
-                                  <span className="font-mono font-bold text-white select-all">0363798989</span>
-                                </div>
-                                <div className="flex justify-between border-b border-white/5 pb-1">
-                                  <span className="text-slate-400">Chủ tài khoản:</span>
-                                  <span className="font-bold text-white">NGUYỄN TRỌNG HIẾU</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-slate-400">Nội dung chuyển khoản:</span>
-                                  <span className="font-mono font-bold text-amber-400 uppercase select-all">CLIPFLOW {selectedPlan.toUpperCase()} {userId}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="pt-2 text-center text-[10px] text-slate-400 flex items-center justify-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-[#00F2EA] animate-ping shrink-0" />
-                            <span>Đang chờ hệ thống ghi nhận chuyển khoản...</span>
-                          </div>
+                    {/* Streamlined PayOS Action Section */}
+                    <div className="space-y-4 text-center my-auto">
+                      {isLoadingPayOS ? (
+                        <div className="py-10 flex flex-col items-center justify-center space-y-3">
+                          <Loader2 className="animate-spin text-[#00F2EA]" size={36} />
+                          <p className="text-xs text-slate-300 font-medium">Đang khởi tạo liên kết thanh toán PayOS...</p>
                         </div>
-                      )}
-
-                      {/* Credit Card View */}
-                      {paymentMethod === "card" && (
-                        <div className="space-y-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Tên chủ thẻ</label>
-                            <input 
-                              type="text" 
-                              required
-                              value={cardName}
-                              onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                              placeholder="NGUYEN VAN A"
-                              className="w-full bg-white/5 border border-[#2D2E45] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00F2EA]"
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Số thẻ tín dụng</label>
-                            <div className="relative">
-                              <input 
-                                type="text" 
-                                required
-                                value={cardNumber}
-                                onChange={handleCardNumberChange}
-                                placeholder="4111 2222 3333 4444"
-                                className="w-full bg-white/5 border border-[#2D2E45] rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-[#00F2EA]"
-                              />
-                              <CreditCard size={16} className="absolute right-3.5 top-3 text-slate-400" />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Hạn sử dụng</label>
-                              <input 
-                                type="text" 
-                                required
-                                value={cardExpiry}
-                                onChange={handleCardExpiryChange}
-                                placeholder="MM/YY"
-                                className="w-full bg-white/5 border border-[#2D2E45] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00F2EA] text-center"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">Mã bí mật CVV</label>
-                              <input 
-                                type="password" 
-                                required
-                                value={cardCvv}
-                                onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").substring(0, 3))}
-                                placeholder="123"
-                                className="w-full bg-white/5 border border-[#2D2E45] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#00F2EA] text-center"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 py-1 text-[11px] text-slate-400">
-                            <Lock size={12} className="text-emerald-500 shrink-0" />
-                            <span>Thông tin thẻ được mã hóa bảo mật chuẩn AES-256 PCI-DSS.</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Wallet MoMo/ZaloPay View */}
-                      {paymentMethod === "wallet" && (
-                        <div className="space-y-4 text-center">
-                          <p className="text-[11px] text-slate-300">
-                            Mở ví MoMo, ZaloPay, Viettel Money hoặc ShopeePay và quét mã QR dưới đây để hoàn tất thanh toán.
-                          </p>
-
-                          <div className="bg-[#A50064]/5 border-2 border-[#A50064]/20 rounded-2xl p-4 inline-block mx-auto">
-                            <div className="bg-white rounded-xl p-3 inline-block">
-                              <img 
-                                src={`https://img.vietqr.io/image/mbbank-0363798989-qr_only.png?amount=${PLANS[selectedPlan].priceNum}&addInfo=CF%20MOMO%20${selectedPlan.toUpperCase()}%20${userId}`}
-                                alt="E-Wallet MoMo QR" 
-                                className="w-[180px] h-[180px] object-contain mx-auto"
-                              />
-                            </div>
-                            <div className="text-[10px] text-[#A50064] font-bold mt-2 tracking-wider flex items-center justify-center gap-1">
-                              <span className="w-2 h-2 rounded-full bg-[#A50064] animate-pulse" />
-                              MoMo / ZaloPay Gateway
-                            </div>
-                          </div>
-
-                          <div className="text-[10px] text-slate-400">
-                            Hệ thống sẽ tự động nâng cấp tài khoản của bạn ngay khi nhận được tín hiệu thanh toán từ ví điện tử.
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action / Auto Verification Banner */}
-                      {paymentMethod === "card" ? (
-                        <button
-                          type="submit"
-                          disabled={isProcessing || isUpdatingProfile}
-                          className="w-full py-3 bg-gradient-to-r from-[#FF3B5C] to-[#00F2EA] text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-6 font-semibold"
-                        >
-                          {isProcessing || isUpdatingProfile ? (
-                            <>
-                              <Loader2 size={14} className="animate-spin" />
-                              <span>Đang xác thực thẻ tín dụng...</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck size={14} />
-                              <span>Xác nhận thanh toán ({PLANS[selectedPlan].price})</span>
-                            </>
-                          )}
-                        </button>
                       ) : (
-                        <div className="mt-6 space-y-4">
-                          {/* Manual confirmation triggers direct Firestore lookup */}
-                          <button
-                            type="button"
-                            disabled={isCheckingStatus}
-                            onClick={handleCheckPaymentStatus}
-                            className="w-full py-3 bg-gradient-to-r from-[#00F2EA] to-[#FF3B5C] text-slate-950 font-extrabold rounded-xl text-xs flex items-center justify-center gap-2 hover:opacity-95 transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider font-semibold animate-pulse"
-                          >
-                            {isCheckingStatus ? (
-                              <>
-                                <Loader2 size={14} className="animate-spin animate-pulse" />
-                                <span>Đang kiểm tra giao dịch...</span>
-                              </>
+                        <div className="space-y-5 max-w-md mx-auto">
+                          {/* Payment Highlights Card */}
+                          <div className="p-4 bg-slate-900/60 border border-slate-700/70 rounded-2xl text-left space-y-3 shadow-inner">
+                            <div className="flex justify-between items-center pb-2.5 border-b border-slate-700/60">
+                              <span className="text-xs text-slate-400">Gói đăng ký:</span>
+                              <span className="text-xs font-bold text-[#00F2EA] uppercase tracking-wide">{PLANS[selectedPlan].name}</span>
+                            </div>
+                            <div className="flex justify-between items-center pb-2.5 border-b border-slate-700/60">
+                              <span className="text-xs text-slate-400">Số tiền thanh toán:</span>
+                              <span className="text-sm font-extrabold text-[#FF3B5C] font-mono">{PLANS[selectedPlan].price}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px] text-slate-400">
+                              <span>Phương thức hỗ trợ:</span>
+                              <span className="text-slate-200 font-medium">VietQR, MB, VCB, Momo, Thẻ ATM/Visa</span>
+                            </div>
+                          </div>
+
+                          {/* 1 Main Button to Redirect to PayOS Payment Page */}
+                          <div className="pt-2">
+                            {payosData?.checkoutUrl ? (
+                              <a
+                                href={payosData.checkoutUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full py-4 px-6 bg-gradient-to-r from-[#00F2EA] via-cyan-400 to-[#FF3B5C] hover:from-[#00d2cc] hover:to-[#e03450] text-slate-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-[#00F2EA]/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer uppercase tracking-wider animate-pulse"
+                              >
+                                <ExternalLink size={18} className="shrink-0" />
+                                <span>Chuyển Sang Trang Thanh Toán PayOS</span>
+                              </a>
                             ) : (
-                              <>
-                                <ShieldCheck size={14} />
-                                <span>Tôi Đã Chuyển Khoản Thành Công (Xác Nhận Đã Chuyển)</span>
-                              </>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedPlan) {
+                                    setIsLoadingPayOS(true);
+                                    fetch("/api/payment/create-payos-link", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        userId,
+                                        plan: selectedPlan,
+                                        amount: PLANS[selectedPlan].priceNum,
+                                        email: userProfile?.email || ""
+                                      })
+                                    })
+                                    .then(res => res.json())
+                                    .then(data => {
+                                      if (data.success && data.checkoutUrl) {
+                                        setPayosData(data);
+                                        window.open(data.checkoutUrl, "_blank");
+                                      } else {
+                                        setPaymentError("Không thể tạo liên kết PayOS. Vui lòng thử lại.");
+                                      }
+                                    })
+                                    .catch(err => setPaymentError("Lỗi kết nối máy chủ: " + err.message))
+                                    .finally(() => setIsLoadingPayOS(false));
+                                  }
+                                }}
+                                className="w-full py-4 px-6 bg-gradient-to-r from-[#00F2EA] via-cyan-400 to-[#FF3B5C] hover:from-[#00d2cc] hover:to-[#e03450] text-slate-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-[#00F2EA]/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer uppercase tracking-wider"
+                              >
+                                <ExternalLink size={18} className="shrink-0" />
+                                <span>Chuyển Sang Trang Thanh Toán PayOS</span>
+                              </button>
                             )}
-                          </button>
+                          </div>
+
+                          <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 pt-1">
+                            <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
+                            <span>Cổng thanh toán tự động xác thực & nâng cấp tài khoản tức thì.</span>
+                          </div>
                         </div>
                       )}
-                    </form>
+                    </div>
+
+                    {/* Bottom Status / Manual Re-check */}
+                    <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+                        <span className="w-2 h-2 rounded-full bg-[#00F2EA] animate-ping shrink-0" />
+                        <span>Hệ thống tự động lắng nghe tín hiệu hoàn tất thanh toán</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isCheckingStatus}
+                        onClick={handleCheckPaymentStatus}
+                        className="text-[11px] text-slate-300 hover:text-white underline cursor-pointer disabled:opacity-50"
+                      >
+                        {isCheckingStatus ? "Đang kiểm tra..." : "Kiểm tra lại trạng thái"}
+                      </button>
+                    </div>
                   </div>
 
                 </div>

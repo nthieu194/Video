@@ -53,6 +53,7 @@ interface AudioStudioProps {
   } | null;
   onIncrementVoiceQuota?: () => void;
   onCheckAuthForAI?: (featureName?: string) => boolean;
+  onShowQuotaModal?: (message: string, title?: string, badge?: string) => void;
 }
 
 interface AudioTrack {
@@ -80,7 +81,8 @@ export default function AudioStudio({
   savedDialogues = [], 
   onSaveAudio,
   userProfile,
-  onIncrementVoiceQuota
+  onIncrementVoiceQuota,
+  onShowQuotaModal
 }: AudioStudioProps) {
   // --- Billing & Quota error states ---
   const [quotaError, setQuotaError] = useState<string | null>(null);
@@ -91,17 +93,29 @@ export default function AudioStudio({
 
     if (currentTier === "free") {
       if (voiceCount >= 3) {
-        setQuotaError("Bạn đã sử dụng hết hạn mức 3 lượt Lồng Tiếng AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để tiếp tục lồng tiếng với 25 lượt/ngày!");
+        const msg = "Bạn đã sử dụng hết hạn mức 3 lượt Lồng Tiếng AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để tiếp tục lồng tiếng với 25 lượt/ngày!";
+        setQuotaError(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Lồng Tiếng AI", "Gói Miễn Phí (STARTER)");
+        }
         return false;
       }
     } else if (currentTier === "mini") {
       if (voiceCount >= 5) {
-        setQuotaError("Bạn đã dùng hết hạn mức 5 lượt lồng tiếng hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng 25 lượt/ngày!");
+        const msg = "Bạn đã dùng hết hạn mức 5 lượt lồng tiếng hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng 25 lượt/ngày!";
+        setQuotaError(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Lồng Tiếng AI", "Gói Thử Nghiệm (MINI)");
+        }
         return false;
       }
     } else if (currentTier === "standard") {
       if (voiceCount >= 25) {
-        setQuotaError("Bạn đã đạt giới hạn 25 lượt lồng tiếng hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để lồng tiếng VÔ HẠN!");
+        const msg = "Bạn đã đạt giới hạn 25 lượt lồng tiếng hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để lồng tiếng VÔ HẠN!";
+        setQuotaError(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Lồng Tiếng AI", "Gói Sáng Tạo Chuyên Nghiệp (PRO)");
+        }
         return false;
       }
     }

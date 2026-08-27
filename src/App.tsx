@@ -44,7 +44,9 @@ import {
   Edit3,
   Database,
   CreditCard,
-  Share2
+  Share2,
+  Crown,
+  AlertTriangle
 } from "lucide-react";
 import { ScriptStyle, Scene, VideoScript, ProductAnalysis, PrompterDialogue } from "./types";
 import ImagePreview from "./components/ImagePreview";
@@ -440,6 +442,35 @@ export default function App() {
   const [initialTier, setInitialTier] = useState<string | null>(null);
   const [showGlobalUpgradeCelebration, setShowGlobalUpgradeCelebration] = useState<boolean>(false);
   const [upgradedTierName, setUpgradedTierName] = useState<string>("");
+
+  // Out-of-scope / Quota limit popup modal state
+  const [quotaModalInfo, setQuotaModalInfo] = useState<{
+    isOpen: boolean;
+    title: string;
+    badge?: string;
+    message: string;
+    limitDetail?: string;
+  } | null>(null);
+
+  const triggerQuotaLimitModal = ({
+    title = "⚡ Vượt Quá Giới Hạn Gói Cước",
+    badge = "Hạn Mức Tính Năng",
+    message,
+    limitDetail
+  }: {
+    title?: string;
+    badge?: string;
+    message: string;
+    limitDetail?: string;
+  }) => {
+    setQuotaModalInfo({
+      isOpen: true,
+      title,
+      badge,
+      message,
+      limitDetail
+    });
+  };
 
   // Sync user billing profile with Firestore & local persistence
   const syncUserProfile = async (currentUser: User | null) => {
@@ -1335,7 +1366,14 @@ export default function App() {
     }
     const currentTier = userProfile?.tier || "free";
     if (currentTier === "free") {
-      setErrorMsg("Tính năng Xuất Google Docs chỉ dành riêng cho người dùng Gói Chuẩn (PRO) hoặc VIP. Vui lòng nâng cấp gói cước tại tab Thanh Toán!");
+      const msg = "Tính năng Xuất Google Docs trực tiếp chỉ dành riêng cho người dùng Gói Chuẩn (PRO) hoặc VIP. Nâng cấp ngay để đồng bộ hóa tài liệu tự động lên Google Drive & Docs!";
+      setErrorMsg(msg);
+      triggerQuotaLimitModal({
+        title: "⭐ Tính Năng Gói Trả Phí",
+        badge: "Xuất Google Docs",
+        message: msg,
+        limitDetail: "Yêu cầu: Gói Pro Creator (99k) hoặc VIP"
+      });
       return;
     }
     const activeToken = workspaceToken;
@@ -2036,41 +2074,104 @@ ${environmentVibeStr}
 
     if (currentTier === "free") {
       if (scriptCount >= 5) {
-        setErrorMsg("Bạn đã sử dụng hết hạn mức 5 kịch bản/ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để sáng tác không gián đoạn!");
+        const msg = "Bạn đã sử dụng hết hạn mức 5 kịch bản/ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để sáng tác không gián đoạn!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Đã Đạt Hạn Mức Kịch Bản Hàng Ngày",
+          badge: "Gói Miễn Phí (STARTER)",
+          message: msg,
+          limitDetail: "Hạn mức: 5 kịch bản / ngày (Tự hồi phục 00:00)"
+        });
         return;
       }
       if (sceneCount > 6) {
-        setErrorMsg("Gói Miễn Phí hỗ trợ tối đa 6 phân cảnh. Vui lòng nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) hoặc VIP tại mục Thanh Toán để viết kịch bản nhiều phân cảnh hơn!");
+        const msg = "Gói Miễn Phí hỗ trợ tối đa 6 phân cảnh. Bạn đang chọn " + sceneCount + " phân cảnh. Vui lòng nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) hoặc VIP tại mục Thanh Toán để viết kịch bản nhiều phân cảnh hơn!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Số Phân Cảnh Cho Phép",
+          badge: "Gói Miễn Phí (STARTER)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 6 phân cảnh (Gói Pro: 10 cảnh, VIP: 12 cảnh)"
+        });
         return;
       }
       if (duration > 60) {
-        setErrorMsg("Gói Miễn Phí giới hạn thời lượng video tối đa 60 giây. Vui lòng nâng cấp gói cước để tạo kịch bản dài đến 180s - 360s!");
+        const msg = "Gói Miễn Phí giới hạn thời lượng video tối đa 60 giây. Bạn đang chọn " + duration + " giây. Vui lòng nâng cấp gói cước để tạo kịch bản dài đến 180s - 360s!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Thời Lượng Video Cho Phép",
+          badge: "Gói Miễn Phí (STARTER)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 60 giây (Gói Pro: 180s, VIP: 360s)"
+        });
         return;
       }
     } else if (currentTier === "mini") {
       if (scriptCount >= 10) {
-        setErrorMsg("Bạn đã dùng hết 10 kịch bản/ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng hạn mức 50 kịch bản/ngày!");
+        const msg = "Bạn đã dùng hết 10 kịch bản/ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng hạn mức 50 kịch bản/ngày!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Đã Đạt Hạn Mức Kịch Bản Hàng Ngày",
+          badge: "Gói Thử Nghiệm (MINI)",
+          message: msg,
+          limitDetail: "Hạn mức: 10 kịch bản / ngày"
+        });
         return;
       }
       if (sceneCount > 7) {
-        setErrorMsg("Gói Thử Nghiệm MINI hỗ trợ tối đa 7 phân cảnh. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo kịch bản 10 phân cảnh!");
+        const msg = "Gói Thử Nghiệm MINI hỗ trợ tối đa 7 phân cảnh. Bạn đang chọn " + sceneCount + " phân cảnh. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo kịch bản 10 phân cảnh!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Số Phân Cảnh Cho Phép",
+          badge: "Gói Thử Nghiệm (MINI)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 7 phân cảnh"
+        });
         return;
       }
       if (duration > 90) {
-        setErrorMsg("Gói Thử Nghiệm MINI giới hạn thời lượng 90 giây. Vui lòng nâng cấp lên Gói Chuyên Nghiệp để tạo video đến 180s!");
+        const msg = "Gói Thử Nghiệm MINI giới hạn thời lượng 90 giây. Bạn đang chọn " + duration + " giây. Vui lòng nâng cấp lên Gói Chuyên Nghiệp để tạo video đến 180s!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Thời Lượng Video Cho Phép",
+          badge: "Gói Thử Nghiệm (MINI)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 90 giây"
+        });
         return;
       }
     } else if (currentTier === "standard") {
       if (scriptCount >= 50) {
-        setErrorMsg("Bạn đã dùng hết hạn mức 50 kịch bản/ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP (Studio Master) tại mục Thanh Toán để mở khóa chế tác VÔ HẠN!");
+        const msg = "Bạn đã dùng hết hạn mức 50 kịch bản/ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP (Studio Master) tại mục Thanh Toán để mở khóa chế tác VÔ HẠN!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Đã Đạt Hạn Mức Kịch Bản Hàng Ngày",
+          badge: "Gói Sáng Tạo Chuyên Nghiệp (PRO)",
+          message: msg,
+          limitDetail: "Hạn mức: 50 kịch bản / ngày"
+        });
         return;
       }
       if (sceneCount > 10) {
-        setErrorMsg("Gói Sáng Tạo Chuyên Nghiệp hỗ trợ tối đa 10 phân cảnh kịch bản. Vui lòng nâng cấp lên Gói VIP để viết kịch bản lên đến 12 phân cảnh!");
+        const msg = "Gói Sáng Tạo Chuyên Nghiệp hỗ trợ tối đa 10 phân cảnh kịch bản. Bạn đang chọn " + sceneCount + " phân cảnh. Vui lòng nâng cấp lên Gói VIP để viết kịch bản lên đến 12 phân cảnh!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Số Phân Cảnh Cho Phép",
+          badge: "Gói Sáng Tạo Chuyên Nghiệp (PRO)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 10 phân cảnh (VIP: 12 cảnh)"
+        });
         return;
       }
       if (duration > 180) {
-        setErrorMsg("Gói Sáng Tạo Chuyên Nghiệp giới hạn thời lượng video tối đa 180 giây (3 phút). Vui lòng nâng cấp lên Gói VIP để gia hạn lên đến 360 giây (6 phút)!");
+        const msg = "Gói Sáng Tạo Chuyên Nghiệp giới hạn thời lượng video tối đa 180 giây (3 phút). Bạn đang chọn " + duration + " giây. Vui lòng nâng cấp lên Gói VIP để gia hạn lên đến 360 giây (6 phút)!";
+        setErrorMsg(msg);
+        triggerQuotaLimitModal({
+          title: "⚡ Vượt Quá Thời Lượng Video Cho Phép",
+          badge: "Gói Sáng Tạo Chuyên Nghiệp (PRO)",
+          message: msg,
+          limitDetail: "Giới hạn hiện tại: Tối đa 180 giây (VIP: 360 giây)"
+        });
         return;
       }
     }
@@ -5371,6 +5472,14 @@ ${environmentVibeStr}
                                   onUpdateImage={(newUrl) => handleUpdateSceneImage(index, newUrl)}
                                   userProfile={userProfile}
                                   onIncrementImageQuota={() => incrementQuota("image")}
+                                  onShowQuotaModal={(msg, title, badge) => {
+                                    triggerQuotaLimitModal({
+                                      title: title || "⚡ Đã Đạt Hạn Mức Vẽ Ảnh AI",
+                                      badge: badge || "Hạn Mức Ảnh AI",
+                                      message: msg,
+                                      limitDetail: "Vẽ ảnh minh họa AI Imagen"
+                                    });
+                                  }}
                                 />
                               </div>
 
@@ -6778,6 +6887,14 @@ ${environmentVibeStr}
                   userProfile={userProfile}
                   onIncrementVoiceQuota={() => incrementQuota("voice")}
                   onCheckAuthForAI={checkAuthForAI}
+                  onShowQuotaModal={(msg, title, badge) => {
+                    triggerQuotaLimitModal({
+                      title: title || "⚡ Đã Đạt Hạn Mức Lồng Tiếng AI",
+                      badge: badge || "Hạn Mức Âm Thanh AI",
+                      message: msg,
+                      limitDetail: "Phòng Lồng Tiếng AI Ultra"
+                    });
+                  }}
                 />
               </div>
             )}
@@ -7304,6 +7421,95 @@ ${environmentVibeStr}
                     className="w-full py-3.5 px-4 bg-gradient-to-r from-[#00F2EA] to-cyan-400 hover:from-[#00d2cc] hover:to-cyan-500 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 uppercase tracking-wider cursor-pointer"
                   >
                     Đóng cửa sổ
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 5. Out-of-Scope / Tier Limit Exceeded Popup Modal */}
+          {quotaModalInfo?.isOpen && (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-fade-in"
+              id="quota-limit-modal-overlay"
+              onClick={() => setQuotaModalInfo(null)}
+            >
+              <div 
+                className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/90 p-6 sm:p-7 relative text-center overflow-hidden animate-scale-in"
+                id="quota-limit-popup-card"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Background soft ambient highlight */}
+                <div className="absolute -top-16 -right-16 w-36 h-36 bg-gradient-to-bl from-rose-500/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+                <div className="absolute -bottom-16 -left-16 w-36 h-36 bg-gradient-to-tr from-amber-500/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+
+                {/* Close button */}
+                <button
+                  type="button"
+                  onClick={() => setQuotaModalInfo(null)}
+                  className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer text-sm font-bold active:scale-95"
+                  aria-label="Đóng cửa sổ"
+                >
+                  ✕
+                </button>
+
+                {/* Header Icon */}
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-50 via-amber-50 to-orange-50 text-[#FF3B5C] border border-rose-200/80 flex items-center justify-center mx-auto mb-3.5 shadow-xs">
+                  <Sparkles size={28} className="text-[#FF3B5C] animate-pulse" />
+                </div>
+
+                {/* Badge */}
+                {quotaModalInfo.badge && (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-extrabold uppercase tracking-wide mb-2.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                    <span>{quotaModalInfo.badge}</span>
+                  </div>
+                )}
+
+                {/* Title */}
+                <h3 className="font-display font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-snug">
+                  {quotaModalInfo.title}
+                </h3>
+
+                {/* Message */}
+                <p className="text-xs sm:text-sm text-slate-600 mt-2.5 leading-relaxed">
+                  {quotaModalInfo.message}
+                </p>
+
+                {/* Limit detail preview */}
+                {quotaModalInfo.limitDetail && (
+                  <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-left text-xs space-y-1.5">
+                    <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                      <span>Chi tiết giới hạn:</span>
+                      <span className="font-bold text-rose-600 text-right">{quotaModalInfo.limitDetail}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-500 text-[11px] pt-1.5 border-t border-slate-200/60">
+                      <span>Máy nhắc chữ & Bộ mix ý tưởng:</span>
+                      <span className="font-extrabold text-emerald-600">100% Miễn Phí Trọn Đời</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="mt-6 flex flex-col sm:flex-row items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuotaModalInfo(null);
+                      setActiveTab("billing");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-[#FF3B5C] via-[#FF5500] to-[#FF7A00] hover:from-[#e03450] hover:to-[#e66c00] text-white font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+                  >
+                    <Crown size={15} />
+                    <span>Nâng Cấp Gói Ngay</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuotaModalInfo(null)}
+                    className="w-full sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
+                  >
+                    Để sau
                   </button>
                 </div>
               </div>

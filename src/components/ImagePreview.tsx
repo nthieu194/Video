@@ -15,6 +15,7 @@ interface ImagePreviewProps {
     imageCountToday: number;
   } | null;
   onIncrementImageQuota?: () => void;
+  onShowQuotaModal?: (message: string, title?: string, badge?: string) => void;
 }
 
 export default function ImagePreview({ 
@@ -24,7 +25,8 @@ export default function ImagePreview({
   imageUrl,
   onUpdateImage,
   userProfile,
-  onIncrementImageQuota
+  onIncrementImageQuota,
+  onShowQuotaModal
 }: ImagePreviewProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -115,19 +117,31 @@ export default function ImagePreview({
 
     if (currentTier === "free") {
       if (imageCount >= 2) {
-        setErrorMsg("Bạn đã sử dụng hết hạn mức 2 lượt vẽ ảnh minh họa AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) để tạo đến 15 ảnh/ngày!");
+        const msg = "Bạn đã sử dụng hết hạn mức 2 lượt vẽ ảnh minh họa AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) để tạo đến 15 ảnh/ngày!";
+        setErrorMsg(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Vẽ Ảnh AI", "Gói Miễn Phí (STARTER)");
+        }
         setTimeout(() => setErrorMsg(null), 8000);
         return;
       }
     } else if (currentTier === "mini") {
       if (imageCount >= 3) {
-        setErrorMsg("Bạn đã dùng hết hạn mức 3 ảnh hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo 15 ảnh/ngày!");
+        const msg = "Bạn đã dùng hết hạn mức 3 ảnh hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo 15 ảnh/ngày!";
+        setErrorMsg(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Vẽ Ảnh AI", "Gói Thử Nghiệm (MINI)");
+        }
         setTimeout(() => setErrorMsg(null), 8000);
         return;
       }
     } else if (currentTier === "standard") {
       if (imageCount >= 15) {
-        setErrorMsg("Bạn đã dùng hết hạn mức 15 ảnh hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để tạo ảnh minh họa VÔ HẠN!");
+        const msg = "Bạn đã dùng hết hạn mức 15 ảnh hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để tạo ảnh minh họa VÔ HẠN!";
+        setErrorMsg(msg);
+        if (onShowQuotaModal) {
+          onShowQuotaModal(msg, "⚡ Đã Đạt Hạn Mức Vẽ Ảnh AI", "Gói Sáng Tạo Chuyên Nghiệp (PRO)");
+        }
         setTimeout(() => setErrorMsg(null), 8000);
         return;
       }
