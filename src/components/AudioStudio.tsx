@@ -90,13 +90,18 @@ export default function AudioStudio({
     const voiceCount = userProfile?.voiceCountToday || 0;
 
     if (currentTier === "free") {
-      if (voiceCount >= 2) {
-        setQuotaError("Bạn đã sử dụng hết hạn mức Lồng Tiếng AI miễn phí hàng ngày (tối đa 2 lần/ngày). Vui lòng nâng cấp lên Gói Chuẩn hoặc VIP tại mục Thanh Toán để tiếp tục lồng tiếng giọng đọc chân thực không giới hạn!");
+      if (voiceCount >= 3) {
+        setQuotaError("Bạn đã sử dụng hết hạn mức 3 lượt Lồng Tiếng AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để tiếp tục lồng tiếng với 25 lượt/ngày!");
+        return false;
+      }
+    } else if (currentTier === "mini") {
+      if (voiceCount >= 5) {
+        setQuotaError("Bạn đã dùng hết hạn mức 5 lượt lồng tiếng hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng 25 lượt/ngày!");
         return false;
       }
     } else if (currentTier === "standard") {
-      if (voiceCount >= 10) {
-        setQuotaError("Bạn đã đạt giới hạn 10 lượt lồng tiếng hàng ngày của Gói Chuẩn. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để lồng tiếng không giới hạn!");
+      if (voiceCount >= 25) {
+        setQuotaError("Bạn đã đạt giới hạn 25 lượt lồng tiếng hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để lồng tiếng VÔ HẠN!");
         return false;
       }
     }

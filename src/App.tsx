@@ -2035,29 +2035,42 @@ ${environmentVibeStr}
     const scriptCount = userProfile?.scriptCountToday || 0;
 
     if (currentTier === "free") {
-      if (scriptCount >= 3) {
-        setErrorMsg("Bạn đã sử dụng hết hạn mức kịch bản hàng ngày của Gói Miễn Phí (tối đa 3 kịch bản/ngày). Vui lòng nâng cấp lên Gói Chuẩn hoặc VIP tại tab Thanh Toán để tiếp tục chế tác!");
+      if (scriptCount >= 5) {
+        setErrorMsg("Bạn đã sử dụng hết hạn mức 5 kịch bản/ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) tại mục Thanh Toán để sáng tác không gián đoạn!");
         return;
       }
       if (sceneCount > 6) {
-        setErrorMsg("Gói Miễn Phí chỉ hỗ trợ tối đa 6 phân cảnh. Vui lòng nâng cấp lên Gói Chuẩn hoặc VIP tại mục Thanh Toán để viết các kịch bản dài và sâu sắc hơn!");
+        setErrorMsg("Gói Miễn Phí hỗ trợ tối đa 6 phân cảnh. Vui lòng nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) hoặc VIP tại mục Thanh Toán để viết kịch bản nhiều phân cảnh hơn!");
         return;
       }
       if (duration > 60) {
-        setErrorMsg("Gói Miễn Phí bị giới hạn thời lượng video tối đa 60 giây. Vui lòng nâng cấp gói cước để tạo kịch bản dài hơn!");
+        setErrorMsg("Gói Miễn Phí giới hạn thời lượng video tối đa 60 giây. Vui lòng nâng cấp gói cước để tạo kịch bản dài đến 180s - 360s!");
+        return;
+      }
+    } else if (currentTier === "mini") {
+      if (scriptCount >= 10) {
+        setErrorMsg("Bạn đã dùng hết 10 kịch bản/ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để mở rộng hạn mức 50 kịch bản/ngày!");
+        return;
+      }
+      if (sceneCount > 7) {
+        setErrorMsg("Gói Thử Nghiệm MINI hỗ trợ tối đa 7 phân cảnh. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo kịch bản 10 phân cảnh!");
+        return;
+      }
+      if (duration > 90) {
+        setErrorMsg("Gói Thử Nghiệm MINI giới hạn thời lượng 90 giây. Vui lòng nâng cấp lên Gói Chuyên Nghiệp để tạo video đến 180s!");
         return;
       }
     } else if (currentTier === "standard") {
-      if (scriptCount >= 15) {
-        setErrorMsg("Bạn đã dùng hết hạn mức 15 kịch bản/ngày của Gói Chuẩn. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để mở khóa chế tác vô hạn!");
+      if (scriptCount >= 50) {
+        setErrorMsg("Bạn đã dùng hết hạn mức 50 kịch bản/ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP (Studio Master) tại mục Thanh Toán để mở khóa chế tác VÔ HẠN!");
         return;
       }
-      if (sceneCount > 9) {
-        setErrorMsg("Gói Chuẩn chỉ hỗ trợ tối đa 9 phân cảnh kịch bản. Vui lòng nâng cấp lên Gói VIP để viết kịch bản lên đến 12 phân cảnh!");
+      if (sceneCount > 10) {
+        setErrorMsg("Gói Sáng Tạo Chuyên Nghiệp hỗ trợ tối đa 10 phân cảnh kịch bản. Vui lòng nâng cấp lên Gói VIP để viết kịch bản lên đến 12 phân cảnh!");
         return;
       }
-      if (duration > 120) {
-        setErrorMsg("Gói Chuẩn bị giới hạn thời lượng video tối đa 120 giây. Vui lòng nâng cấp lên Gói VIP để gia hạn lên đến 360 giây!");
+      if (duration > 180) {
+        setErrorMsg("Gói Sáng Tạo Chuyên Nghiệp giới hạn thời lượng video tối đa 180 giây (3 phút). Vui lòng nâng cấp lên Gói VIP để gia hạn lên đến 360 giây (6 phút)!");
         return;
       }
     }

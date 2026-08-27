@@ -114,14 +114,20 @@ export default function ImagePreview({
     const imageCount = userProfile?.imageCountToday || 0;
 
     if (currentTier === "free") {
-      if (imageCount >= 1) {
-        setErrorMsg("Hạn mức của Gói Miễn Phí chỉ hỗ trợ tạo 1 ảnh/ngày. Vui lòng nâng cấp lên Gói Chuẩn hoặc VIP tại mục Thanh Toán để tiếp tục vẽ ảnh minh họa!");
+      if (imageCount >= 2) {
+        setErrorMsg("Bạn đã sử dụng hết hạn mức 2 lượt vẽ ảnh minh họa AI hàng ngày của Gói Miễn Phí. Hạn mức sẽ tự động đặt lại lúc 00:00, hoặc bạn có thể nâng cấp lên Gói Sáng Tạo Chuyên Nghiệp (Pro) để tạo đến 15 ảnh/ngày!");
+        setTimeout(() => setErrorMsg(null), 8000);
+        return;
+      }
+    } else if (currentTier === "mini") {
+      if (imageCount >= 3) {
+        setErrorMsg("Bạn đã dùng hết hạn mức 3 ảnh hàng ngày của Gói Thử Nghiệm MINI. Vui lòng nâng cấp lên Gói Chuyên Nghiệp (Pro) để tạo 15 ảnh/ngày!");
         setTimeout(() => setErrorMsg(null), 8000);
         return;
       }
     } else if (currentTier === "standard") {
-      if (imageCount >= 5) {
-        setErrorMsg("Bạn đã dùng hết hạn mức 5 ảnh hàng ngày của Gói Chuẩn. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để tạo ảnh minh họa không giới hạn!");
+      if (imageCount >= 15) {
+        setErrorMsg("Bạn đã dùng hết hạn mức 15 ảnh hàng ngày của Gói Sáng Tạo Chuyên Nghiệp. Vui lòng nâng cấp lên Gói VIP tại mục Thanh Toán để tạo ảnh minh họa VÔ HẠN!");
         setTimeout(() => setErrorMsg(null), 8000);
         return;
       }

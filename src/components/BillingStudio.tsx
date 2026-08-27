@@ -157,26 +157,27 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
   // Tier configuration details
   const PLANS = {
     free: {
-      name: "Gói Miễn Phí",
+      name: "Gói Miễn Phí (STARTER)",
       price: "0đ",
       priceNum: 0,
       period: "vĩnh viễn",
-      desc: "Trải nghiệm sản xuất video ngắn AI cơ bản",
+      desc: "Trải nghiệm sáng tạo video AI & Máy nhắc chữ không giới hạn",
       limits: {
-        scripts: 3,
-        voice: 2,
-        images: 1,
+        scripts: 5,
+        voice: 3,
+        images: 2,
         maxDuration: 60,
         maxScenes: 6
       },
       features: [
-        "Sản xuất kịch bản AI: Tối đa 3 kịch bản/ngày",
-        "Độ dài video tối đa: 60 giây",
-        "Số lượng phân cảnh: Tối đa 6 cảnh",
-        "AI Lồng Tiếng cơ bản: 2 lượt/ngày",
-        "AI Vẽ Ảnh minh họa: 1 ảnh/ngày",
-        "Không hỗ trợ xuất Google Docs",
-        "Chèn watermark ClipViral & hiển thị quảng cáo"
+        "🎁 Máy Nhắc Chữ (Teleprompter): 100% Miễn phí không giới hạn",
+        "🎛️ Bộ Mix Ý Tưởng 4 Trường: Miễn phí không giới hạn",
+        "Sản xuất kịch bản AI: 5 kịch bản/ngày",
+        "Độ dài video tối đa: 60 giây (6 phân cảnh)",
+        "AI Lồng Tiếng cơ bản: 3 lượt/ngày",
+        "AI Vẽ Ảnh minh họa: 2 ảnh/ngày",
+        "Lưu trữ đám mây: Tối đa 10 kịch bản",
+        "Không watermark & không quảng cáo gián đoạn"
       ]
     },
     mini: {
@@ -186,52 +187,53 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
       period: "tháng",
       desc: "Gói giá siêu nhỏ để bạn kiểm thử thực tế cổng thanh toán tự động",
       limits: {
-        scripts: 5,
-        voice: 4,
-        images: 2,
+        scripts: 10,
+        voice: 5,
+        images: 3,
         maxDuration: 90,
         maxScenes: 7
       },
       features: [
-        "Sản xuất kịch bản AI: 5 kịch bản/ngày",
-        "Độ dài video tối đa: 90 giây",
-        "Số lượng phân cảnh: Lên đến 7 cảnh",
-        "AI Lồng Tiếng cơ bản: 4 lượt/ngày",
-        "AI Vẽ Ảnh minh họa: 2 ảnh/ngày",
+        "🎁 Đầy đủ Máy Nhắc Chữ & Bộ Mix 100% Miễn Phí",
+        "Sản xuất kịch bản AI: 10 kịch bản/ngày",
+        "Độ dài video tối đa: 90 giây (7 phân cảnh)",
+        "AI Lồng Tiếng cơ bản: 5 lượt/ngày",
+        "AI Vẽ Ảnh minh họa: 3 ảnh/ngày",
         "Hỗ trợ đồng bộ hóa thời gian thực tức thì",
-        "Không chèn watermark trong suốt quá trình thử nghiệm"
+        "Kiểm thử thanh toán tự động VietQR / PayOS"
       ]
     },
     standard: {
-      name: "Gói Chuẩn (PRO)",
-      price: "199.000đ",
-      priceNum: 199000,
+      name: "Sáng Tạo Chuyên Nghiệp (PRO CREATOR)",
+      price: "99.000đ",
+      priceNum: 99000,
       period: "tháng",
-      desc: "Lý tưởng cho các nhà sáng tạo cá nhân chuyên nghiệp",
+      desc: "Lý tưởng cho Tiktoker, Youtuber & Content Creator sản xuất đều đặn",
       limits: {
-        scripts: 15,
-        voice: 10,
-        images: 5,
-        maxDuration: 120,
-        maxScenes: 9
+        scripts: 50,
+        voice: 25,
+        images: 15,
+        maxDuration: 180,
+        maxScenes: 10
       },
       features: [
-        "Sản xuất kịch bản AI: 15 kịch bản/ngày",
-        "Độ dài video tối đa: 120 giây",
-        "Số lượng phân cảnh: Lên đến 9 cảnh",
-        "AI Lồng Tiếng chất lượng cao: 10 lượt/ngày",
-        "AI Vẽ Ảnh minh họa (Imagen): 5 ảnh/ngày",
-        "Mở khóa toàn bộ phong cách & presets",
+        "🎁 Đầy đủ Máy Nhắc Chữ & Bộ Mix 100% Miễn Phí",
+        "Sản xuất kịch bản AI: 50 kịch bản/ngày",
+        "Độ dài video tối đa: 180 giây (10 phân cảnh)",
+        "Mở khóa Prompt Video AI 8 gạch (Kling, Sora, Runway, Midjourney)",
+        "AI Lồng Tiếng Studio Ultra: 25 lượt/ngày (Tải MP3 phân đoạn)",
+        "AI Vẽ Ảnh minh họa (Imagen): 15 ảnh/ngày",
+        "Phân tích đối thủ & Bắt trend AI theo ngành hàng",
         "Hỗ trợ xuất sang Google Docs trực tiếp",
-        "Không chèn watermark, trải nghiệm không quảng cáo"
+        "Lưu trữ đám mây 500 kịch bản & thư viện âm thanh"
       ]
     },
     vip: {
-      name: "Gói VIP (ULTIMATE)",
-      price: "499.000đ",
-      priceNum: 499000,
+      name: "Doanh Nghiệp / Agency (STUDIO MASTER)",
+      price: "299.000đ",
+      priceNum: 299000,
       period: "tháng",
-      desc: "Quyền năng tối cao cho các Agencies & Content Creators chuyên nghiệp",
+      desc: "Quyền năng tối cao cho Agencies & Content Creators chuyên nghiệp",
       limits: {
         scripts: 999, // Uncapped conceptually
         voice: 999,
@@ -240,13 +242,14 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
         maxScenes: 12
       },
       features: [
-        "Sản xuất kịch bản AI: Không giới hạn hàng ngày",
-        "Độ dài video tối đa: 360 giây (6 phút)",
-        "Số lượng phân cảnh: Lên đến 12 cảnh",
-        "AI Lồng Tiếng vô hạn lượt sử dụng",
-        "AI Vẽ Ảnh minh họa vô hạn với tốc độ cao",
-        "Đặc quyền phân tích xu hướng và đối tượng chuyên sâu",
-        "Xuất file đa định dạng: Google Docs, Markdown, Drive",
+        "🎁 Đầy đủ Máy Nhắc Chữ & Bộ Mix 100% Miễn Phí",
+        "Sản xuất kịch bản AI: VÔ HẠN kịch bản hàng ngày",
+        "Độ dài video tối đa: 360 giây (6 phút - 12 phân cảnh)",
+        "Tạo kịch bản hàng loạt (Bulk Generation) theo chiến dịch",
+        "Lên kế hoạch Series Video (Series Planner) tích hợp Google Workspace",
+        "AI Lồng Tiếng Studio Ultra: VÔ HẠN lượt sử dụng",
+        "AI Vẽ Ảnh minh họa: VÔ HẠN với tốc độ ưu tiên cao nhất",
+        "Priority API Queue: Tốc độ AI phản hồi nhanh gấp 2 lần",
         "Hỗ trợ đặc biệt 24/7 từ chuyên gia nội dung"
       ]
     }
@@ -632,6 +635,29 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
           {userProfile?.lastQuotaReset && (
             <span className="font-mono text-[10px]">Cập nhật lần cuối: {userProfile.lastQuotaReset}</span>
           )}
+        </div>
+      </div>
+
+      {/* Creator Community Free Commitment Banner */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-[#00F2EA]/10 rounded-[20px] p-5 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-start md:items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-bold shrink-0 shadow-md">
+            🎁
+          </div>
+          <div>
+            <h4 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+              Cam Kết Vì Nhà Sáng Tạo Nội Dung
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">100% Miễn Phí Trọn Đời</span>
+            </h4>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Tính năng <b>Máy Nhắc Chữ Thông Minh (Teleprompter)</b> và <b>Bộ Mix Ý Tưởng Sáng Tạo 4 Trường</b> luôn được cung cấp <b>HOÀN TOÀN MIỄN PHÍ KHÔNG GIỚI HẠN</b> cho tất cả mọi người dùng (quay video Full HD 1080p, lật gương, tùy chỉnh tốc độ chữ).
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-semibold text-emerald-700 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-200 shadow-xs">
+            ✓ Không phụ phí ngầm
+          </span>
         </div>
       </div>
 
@@ -1293,31 +1319,33 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
       <div className="bg-white rounded-[24px] p-6 shadow-sm border border-slate-200 mt-6">
         <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-4 flex items-center gap-1.5">
           <HelpCircle size={16} className="text-[#FF3B5C]" />
-          Câu hỏi thường gặp
+          Câu hỏi thường gặp & Cam kết minh bạch
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-slate-800">Quy trình gia hạn diễn ra như thế nào?</h4>
+            <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <span className="text-emerald-500">🎁</span> Máy Nhắc Chữ (Teleprompter) có bị tính phí hay giới hạn không?
+            </h4>
             <p className="text-[11px] text-slate-500 leading-normal">
-              Khi đăng ký gói Chuẩn hoặc VIP theo tháng, hệ thống sẽ hỗ trợ chế độ thông báo chuyển khoản gia hạn trước 3 ngày. Bạn hoàn toàn có thể hủy hoặc tạm dừng gia hạn bất kỳ lúc nào tại tab này mà không phát sinh chi phí ẩn.
+              Hoàn toàn <b>KHÔNG</b>! Máy Nhắc Chữ và Bộ Mix Ý Tưởng được mở khóa 100% miễn phí vĩnh viễn cho tất cả người dùng, bao gồm tính năng quay video Full HD 1080p, chế độ gương lật chuyên dụng, điều chỉnh phông chữ & tốc độ cuộn không giới hạn.
             </p>
           </div>
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-slate-800">Tôi có thể nâng cấp từ gói Chuẩn lên VIP được không?</h4>
+            <h4 className="text-xs font-bold text-slate-800">Khi hết hạn mức miễn phí trong ngày thì sao?</h4>
             <p className="text-[11px] text-slate-500 leading-normal">
-              Được chứ! Khi nâng cấp giữa kỳ hạn, hệ thống sẽ tự động tính toán phần tiền thừa của gói Chuẩn chưa sử dụng hết để khấu trừ vào hóa đơn gói VIP của bạn.
+              Hạn mức tạo kịch bản, vẽ ảnh và lồng tiếng AI của Gói Miễn Phí sẽ <b>tự động đặt lại về 0 vào lúc 00:00 hàng ngày</b>. Bạn hoàn toàn có thể tiếp tục sử dụng vào ngày hôm sau mà không bị khóa tài khoản.
             </p>
           </div>
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-slate-800">Giao dịch VietQR mất bao lâu để kích hoạt?</h4>
+            <h4 className="text-xs font-bold text-slate-800">Tôi có thể hủy hoặc đổi gói cước bất kỳ lúc nào không?</h4>
             <p className="text-[11px] text-slate-500 leading-normal">
-              Nhờ công nghệ đồng bộ thời gian thực kết nối với hệ thống Napas247, tài khoản của bạn sẽ được tự động nâng cấp chỉ sau 3 đến 5 giây kể từ khi bạn thực hiện giao dịch chuyển khoản ngân hàng thành công.
+              Được chứ! Bạn hoàn toàn chủ động nâng cấp, hạ cấp hoặc đổi sang gói cước khác bất kỳ lúc nào. Không có hợp đồng ràng buộc hay chi phí ẩn tự động trừ tiền.
             </p>
           </div>
           <div className="space-y-1">
-            <h4 className="text-xs font-bold text-slate-800">Sự khác biệt lớn nhất giữa gói Chuẩn và VIP là gì?</h4>
+            <h4 className="text-xs font-bold text-slate-800">Sự khác biệt lớn nhất giữa gói Chuẩn (Pro Creator) và VIP (Studio Master)?</h4>
             <p className="text-[11px] text-slate-500 leading-normal">
-              Gói VIP mở khóa giới hạn sử dụng hoàn toàn không giới hạn hàng ngày, độ dài tối đa lên tới 360 giây, số phân cảnh tối đa là 12, hỗ trợ đồng sáng tác sâu, phân tích sản phẩm và hỗ trợ kỹ thuật trực tiếp 24/7.
+              Gói Pro Creator mở khóa 50 kịch bản/ngày, 25 lượt lồng tiếng Ultra và prompt video AI 8 gạch chuyên sâu. Trong khi gói VIP mang lại quyền năng <b>VÔ HẠN</b> cho toàn bộ tính năng, tạo kịch bản hàng loạt, lập kế hoạch Series và hàng chờ AI ưu tiên tốc độ cao.
             </p>
           </div>
         </div>

@@ -1549,9 +1549,12 @@ export default function PrompterSuite({
               </div>
             </div>
             {/* Action status indicators */}
-            <div className="flex items-center gap-1.5 self-start md:self-auto select-none">
-              <span className="inline-flex w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">AI Sẵn Sàng Sáng Tạo</span>
+            <div className="flex items-center gap-2 self-start md:self-auto select-none">
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-xs">
+                <span>🎁</span> Máy Nhắc Chữ 100% Miễn Phí
+              </span>
+              <span className="inline-flex w-2 h-2 rounded-full bg-emerald-500 animate-ping ml-1" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">AI Sẵn Sàng</span>
             </div>
           </div>
 
