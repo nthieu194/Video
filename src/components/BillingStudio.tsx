@@ -278,6 +278,12 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
           const data = await res.json();
           if (data.success && data.checkoutUrl) {
             setPayosData(data);
+            if (data.orderCode) {
+              try {
+                localStorage.setItem("clipflow_pending_payos_order", String(data.orderCode));
+                localStorage.setItem("clipflow_pending_payos_plan", selectedPlan);
+              } catch (e) {}
+            }
           }
         } catch (err) {
           console.error("Error creating PayOS payment link:", err);
@@ -290,6 +296,66 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
       setPayosData(null);
     }
   }, [selectedPlan, userId, userProfile?.email]);
+
+  // Real-time automatic polling & window focus listener for PayOS payment confirmation
+  useEffect(() => {
+    const currentOrderCode = payosData?.orderCode || localStorage.getItem("clipflow_pending_payos_order");
+    if (!currentOrderCode || paymentSuccess || !selectedPlan) return;
+
+    let isPolling = false;
+
+    const checkLivePayOSStatus = async () => {
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        const response = await fetch("/api/payment/check-payos-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderCode: currentOrderCode,
+            userId: userId || "anonymous"
+          })
+        });
+        const result = await response.json();
+        if (result.success && result.isPaid) {
+          console.log("[BillingStudio Polling] Phát hiện thanh toán PayOS thành công:", result);
+          const finalTier = result.tier || selectedPlan || "vip";
+          setPaymentSuccess(true);
+          try {
+            localStorage.removeItem("clipflow_pending_payos_order");
+            localStorage.removeItem("clipflow_pending_payos_plan");
+          } catch (e) {}
+          await onUpgrade(finalTier as any);
+        }
+      } catch (pollErr) {
+        console.warn("[BillingStudio Polling Error]", pollErr);
+      } finally {
+        isPolling = false;
+      }
+    };
+
+    // 1. Regular interval polling every 3 seconds while payment modal is waiting
+    const interval = setInterval(checkLivePayOSStatus, 3000);
+
+    // 2. Check immediately on window focus (when user switches back from PayOS checkout tab)
+    const handleFocus = () => {
+      checkLivePayOSStatus();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkLivePayOSStatus();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [payosData?.orderCode, paymentSuccess, selectedPlan, userId, onUpgrade]);
 
   // Safe limits checker helper
   const scriptCount = userProfile?.scriptCountToday || 0;
@@ -324,9 +390,9 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
     setCardExpiry(value);
   };
 
-  // Handle Real Payment Status Verification via Firestore
+  // Handle Real Payment Status Verification via Live PayOS API and Firestore
   const handleCheckPaymentStatus = async () => {
-    if (!userId || userId === "anonymous" || !db) {
+    if (!userId || userId === "anonymous") {
       setPaymentError("Vui lòng đăng nhập để sử dụng tính năng kiểm tra thực tế.");
       return;
     }
@@ -334,20 +400,51 @@ export default function BillingStudio({ userProfile, onUpgrade, isUpdatingProfil
     setPaymentError(null);
     setSandboxSuccess(null);
     try {
-      const docSnap = await getDoc(doc(db, "users", userId));
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.tier === selectedPlan || (selectedPlan === "standard" && data.tier === "vip") || data.tier === "vip") {
+      const activeOrderCode = payosData?.orderCode || localStorage.getItem("clipflow_pending_payos_order");
+
+      // 1. Kiểm tra trực tiếp qua endpoint kiểm tra PayOS Live API
+      if (activeOrderCode) {
+        const liveCheckRes = await fetch("/api/payment/check-payos-order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderCode: activeOrderCode,
+            userId: userId
+          })
+        });
+        const liveData = await liveCheckRes.json();
+        if (liveData.success && liveData.isPaid) {
+          const upgradedTier = liveData.tier || selectedPlan || "vip";
           setPaymentSuccess(true);
-          await onUpgrade(data.tier);
-        } else {
-          setPaymentError("Hệ thống chưa nhận được thông tin thanh toán tự động của bạn. Vui lòng quét mã QR chuyển khoản đúng số tiền và nội dung, sau đó chờ 5-10 giây để hệ thống đồng bộ. Nếu bạn đã hoàn thành chuyển khoản nhưng hệ thống chưa nâng cấp, hãy bấm vào nút 'Xác nhận chuyển khoản thủ công' bên dưới để nhập mã giao dịch.");
+          try {
+            localStorage.removeItem("clipflow_pending_payos_order");
+            localStorage.removeItem("clipflow_pending_payos_plan");
+          } catch (e) {}
+          await onUpgrade(upgradedTier as any);
+          return;
         }
-      } else {
-        setPaymentError("Không tìm thấy thông tin tài khoản người dùng trên cơ sở dữ liệu.");
       }
+
+      // 2. Tra cứu đối soát qua Firestore
+      if (db) {
+        const docSnap = await getDoc(doc(db, "users", userId));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.tier === selectedPlan || (selectedPlan === "standard" && data.tier === "vip") || data.tier === "vip") {
+            setPaymentSuccess(true);
+            try {
+              localStorage.removeItem("clipflow_pending_payos_order");
+              localStorage.removeItem("clipflow_pending_payos_plan");
+            } catch (e) {}
+            await onUpgrade(data.tier);
+            return;
+          }
+        }
+      }
+
+      setPaymentError("Hệ thống chưa nhận được thông tin thanh toán hoàn tất từ cổng PayOS hoặc ngân hàng. Nếu bạn vừa thanh toán xong, vui lòng chờ 3-5 giây và nhấn 'Kiểm tra lại trạng thái'.");
     } catch (err: any) {
-      setPaymentError("Lỗi kết nối cơ sở dữ liệu: " + err.message);
+      setPaymentError("Lỗi kết nối kiểm tra: " + err.message);
     } finally {
       setIsCheckingStatus(false);
     }

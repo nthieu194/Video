@@ -2771,7 +2771,19 @@ async function findUserFromDescription(desc: string): Promise<string | null> {
     const dbInstance = await getPaymentDb();
     if (!dbInstance) return null;
 
-    const { collection, getDocs } = await import("firebase/firestore");
+    const { collection, getDocs, doc, getDoc, query, where, limit } = await import("firebase/firestore");
+
+    // Thử trích xuất mã số đơn hàng orderCode từ mô tả (ví dụ CF MINI 171829283...)
+    const orderCodeMatch = desc.match(/\d{5,}/);
+    if (orderCodeMatch) {
+      const extractedCode = orderCodeMatch[0];
+      const txSnap = await getDoc(doc(dbInstance, "transactions", extractedCode));
+      if (txSnap.exists() && txSnap.data().userId) {
+        console.log(`[Payment Parser OrderCode Match] Tìm thấy User ID: ${txSnap.data().userId} từ orderCode #${extractedCode} trong mô tả "${desc}"`);
+        return txSnap.data().userId;
+      }
+    }
+
     const usersSnap = await getDocs(collection(dbInstance, "users"));
     
     // Tier 1: Khớp chính xác hoàn toàn (toàn bộ ID, ID field, hoặc Email dọn dẹp)
@@ -2839,8 +2851,30 @@ async function findUserFromDescription(desc: string): Promise<string | null> {
   return extractUserIdFromPaymentDescription(desc);
 }
 
+// Helper xác định gói cước chuẩn dựa trên số tiền hoặc tên gói
+function resolveSubscriptionTier(amount: number, desc: string, preferredTier?: string): "mini" | "standard" | "vip" {
+  if (preferredTier && ["mini", "standard", "vip"].includes(preferredTier.toLowerCase())) {
+    return preferredTier.toLowerCase() as "mini" | "standard" | "vip";
+  }
+
+  const normalizedDesc = (desc || "").toLowerCase();
+  if (normalizedDesc.includes("mini") || (amount > 0 && amount <= 25000)) {
+    return "mini";
+  } else if (normalizedDesc.includes("standard") || normalizedDesc.includes("pro") || (amount > 25000 && amount <= 150000)) {
+    return "standard";
+  } else {
+    return "vip";
+  }
+}
+
 // Hàm nâng cấp gói VIP/Standard/Mini của user trong Firestore Database thật
-async function upgradeUserToVIP(userId: string, amount: number, transactionId: string, desc: string): Promise<{ success: boolean; error?: string }> {
+async function upgradeUserToVIP(
+  userId: string, 
+  amount: number, 
+  transactionId: string, 
+  desc: string,
+  preferredTier?: string
+): Promise<{ success: boolean; error?: string; tier?: string }> {
   try {
     const dbInstance = await getPaymentDb();
     if (!dbInstance) {
@@ -2902,14 +2936,8 @@ async function upgradeUserToVIP(userId: string, amount: number, transactionId: s
       }
     }
 
-    // Xác định Gói (Tier) dựa vào Số tiền hoặc Nội dung chuyển khoản
-    let targetTier = "vip"; // mặc định là VIP
-    const normalizedDesc = (desc || "").toLowerCase();
-    if (normalizedDesc.includes("mini") || (amount > 5000 && amount < 25000)) {
-      targetTier = "mini";
-    } else if (normalizedDesc.includes("standard") || normalizedDesc.includes("pro") || (amount > 150000 && amount < 250000)) {
-      targetTier = "standard";
-    }
+    // Xác định Gói (Tier) dựa vào preferredTier, Số tiền hoặc Nội dung chuyển khoản
+    const targetTier = resolveSubscriptionTier(amount, desc, preferredTier);
 
     // 1. Cập nhật gói trực tiếp cho User kèm theo systemToken cho bypass rules
     try {
@@ -2932,18 +2960,22 @@ async function upgradeUserToVIP(userId: string, amount: number, transactionId: s
       await setDoc(transactionDocRef, {
         transactionId: transactionIdSanitized,
         userId: targetUserId,
+        plan: targetTier,
         amount,
         description: desc,
         status: "SUCCESS",
+        isUsed: true,
+        usedBy: targetUserId,
         systemToken: "CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN",
         paymentDate: new Date().toISOString(),
-        paymentType: "VietQR_Auto"
-      });
+        paymentType: "VietQR_Auto",
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
       console.log(`[Payment Webhook] Đã ghi nhận lịch sử giao dịch ${transactionIdSanitized} thành công cho user ${targetUserId}!`);
     } catch (dbErr: any) {
       console.error(`[Payment Webhook] Lỗi khi tạo tài liệu giao dịch (không ảnh hưởng quyền nâng cấp):`, dbErr);
     }
-    return { success: true };
+    return { success: true, tier: targetTier };
   } catch (error: any) {
     console.error(`[Payment Webhook] Gặp lỗi khi nâng cấp gói cho user ${userId}:`, error);
     return { success: false, error: error.message || String(error) };
@@ -3025,7 +3057,9 @@ app.post("/api/payment/create-payos-link", async (req, res) => {
           const txDocRef = doc(dbInstance, "transactions", String(orderCode));
           await setDoc(txDocRef, {
             transactionId: String(orderCode),
+            orderCode: orderCode,
             userId,
+            userEmail: email || "",
             plan,
             amount,
             description,
@@ -3034,8 +3068,9 @@ app.post("/api/payment/create-payos-link", async (req, res) => {
             usedBy: "",
             systemToken: "CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN",
             paymentDate: new Date().toISOString(),
-            paymentType: "PayOS_Dynamic"
-          });
+            paymentType: "PayOS_Dynamic",
+            createdAt: new Date().toISOString()
+          }, { merge: true });
           console.log(`[PayOS Link Gen] Saved pending transaction #${orderCode} for user ${userId}`);
         } catch (dbErr) {
           console.error(`[PayOS Link Gen DB Error]`, dbErr);
@@ -3067,6 +3102,193 @@ app.post("/api/payment/create-payos-link", async (req, res) => {
       useFallback: true,
       error: err.message || String(err)
     });
+  }
+});
+
+// API kiểm tra trạng thái đơn hàng PayOS theo thời gian thực (Live API & Firestore Verification)
+app.post("/api/payment/check-payos-order", async (req, res) => {
+  try {
+    const { orderCode, userId } = req.body;
+    const payosClientId = process.env.PAYOS_CLIENT_ID;
+    const payosApiKey = process.env.PAYOS_API_KEY;
+
+    if (!orderCode && !userId) {
+      return res.status(400).json({ error: "Thiếu mã đơn hàng hoặc User ID." });
+    }
+
+    const dbInstance = await getPaymentDb();
+    if (!dbInstance) {
+      return res.status(500).json({ error: "Lỗi kết nối cơ sở dữ liệu." });
+    }
+
+    const { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, getDocs } = await import("firebase/firestore");
+
+    let ordersToCheck: { orderCode: string; plan?: string; amount?: number; userId?: string }[] = [];
+
+    if (orderCode) {
+      const codeStr = String(orderCode).trim();
+      const txSnap = await getDoc(doc(dbInstance, "transactions", codeStr));
+      let plan = "vip";
+      let amount = 0;
+      let targetUser = userId;
+      if (txSnap.exists()) {
+        const txData = txSnap.data();
+        plan = txData.plan || "vip";
+        amount = txData.amount || 0;
+        targetUser = txData.userId || targetUser;
+      }
+      ordersToCheck.push({ orderCode: codeStr, plan, amount, userId: targetUser });
+    }
+
+    if (userId) {
+      // Tìm các đơn hàng PENDING gần nhất của user này trong Firestore
+      try {
+        const qSnap = await getDocs(query(
+          collection(dbInstance, "transactions"),
+          where("userId", "==", userId),
+          where("status", "==", "PENDING"),
+          limit(5)
+        ));
+        qSnap.forEach((d) => {
+          const data = d.data();
+          if (!ordersToCheck.some(o => o.orderCode === d.id)) {
+            ordersToCheck.push({
+              orderCode: d.id,
+              plan: data.plan,
+              amount: data.amount,
+              userId: data.userId
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("[Check PayOS Order] Lỗi tìm đơn PENDING của user:", err);
+      }
+    }
+
+    if (ordersToCheck.length === 0) {
+      return res.json({
+        success: true,
+        isPaid: false,
+        message: "Không tìm thấy giao dịch đang chờ xử lý."
+      });
+    }
+
+    // Kiểm tra từng đơn hàng qua PayOS Live API
+    for (const item of ordersToCheck) {
+      const currentOrderCode = item.orderCode;
+      const targetUserId = item.userId || userId;
+      const currentPlan = item.plan || "vip";
+
+      // 1. Kiểm tra qua PayOS Live API nếu có credentials và orderCode là số hợp lệ
+      if (payosClientId && payosApiKey && /^\d+$/.test(currentOrderCode)) {
+        try {
+          console.log(`[Check PayOS Order] Tra cứu đơn #${currentOrderCode} qua PayOS Live API...`);
+          const payosRes = await fetch(`https://api-merchant.payos.vn/v2/payment-requests/${currentOrderCode}`, {
+            method: "GET",
+            headers: {
+              "x-client-id": payosClientId,
+              "x-api-key": payosApiKey,
+              "Content-Type": "application/json"
+            }
+          });
+
+          const payosResult = await payosRes.json();
+          console.log(`[Check PayOS Order] Kết quả Live API đơn #${currentOrderCode}:`, payosResult);
+
+          if (payosResult && payosResult.code === "00" && payosResult.data) {
+            const status = payosResult.data.status;
+            const amountPaid = payosResult.data.amountPaid || payosResult.data.amount || item.amount || 0;
+
+            if (status === "PAID") {
+              console.log(`[Check PayOS Order] Đơn #${currentOrderCode} ĐÃ THANH TOÁN (PAID)! Tiến hành nâng cấp...`);
+              const upgradeResult = await upgradeUserToVIP(
+                targetUserId, 
+                amountPaid, 
+                currentOrderCode, 
+                `Thanh toán PayOS #${currentOrderCode}`,
+                currentPlan
+              );
+
+              if (upgradeResult.success) {
+                // Cập nhật trạng thái transaction trong Firestore
+                try {
+                  const txRef = doc(dbInstance, "transactions", currentOrderCode);
+                  await setDoc(txRef, {
+                    transactionId: currentOrderCode,
+                    orderCode: Number(currentOrderCode),
+                    userId: targetUserId,
+                    plan: upgradeResult.tier || currentPlan,
+                    amount: amountPaid,
+                    status: "SUCCESS",
+                    isUsed: true,
+                    usedBy: targetUserId,
+                    paymentType: "PayOS_Live_Verified",
+                    systemToken: "CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN",
+                    updatedAt: new Date().toISOString()
+                  }, { merge: true });
+                } catch (e) {
+                  console.warn("[Check PayOS Order] Lỗi cập nhật tx doc:", e);
+                }
+
+                return res.json({
+                  success: true,
+                  isPaid: true,
+                  orderCode: currentOrderCode,
+                  tier: upgradeResult.tier || currentPlan,
+                  amount: amountPaid,
+                  message: `Thanh toán thành công! Gói ${String(upgradeResult.tier || currentPlan).toUpperCase()} của bạn đã được kích hoạt.`
+                });
+              }
+            } else if (status === "CANCELLED") {
+              try {
+                const txRef = doc(dbInstance, "transactions", currentOrderCode);
+                await updateDoc(txRef, {
+                  status: "CANCELLED",
+                  systemToken: "CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN",
+                  updatedAt: new Date().toISOString()
+                });
+              } catch (e) {}
+            }
+          }
+        } catch (apiErr) {
+          console.error(`[Check PayOS Order] Lỗi khi gọi PayOS API cho đơn #${currentOrderCode}:`, apiErr);
+        }
+      }
+
+      // 2. Kiểm tra xem transaction trong Firestore đã được Webhook cập nhật thành SUCCESS chưa
+      try {
+        const txDocRef = doc(dbInstance, "transactions", currentOrderCode);
+        const txSnap = await getDoc(txDocRef);
+        if (txSnap.exists()) {
+          const txData = txSnap.data();
+          if (txData.status === "SUCCESS") {
+            // Đảm bảo user profile cũng được cập nhật
+            if (targetUserId) {
+              await upgradeUserToVIP(targetUserId, txData.amount || item.amount || 0, currentOrderCode, "Firestore Sync Success", txData.plan || currentPlan);
+            }
+            return res.json({
+              success: true,
+              isPaid: true,
+              orderCode: currentOrderCode,
+              tier: txData.plan || currentPlan,
+              message: "Giao dịch đã được hệ thống ghi nhận thành công!"
+            });
+          }
+        }
+      } catch (txErr) {
+        console.error("[Check PayOS Order] Lỗi kiểm tra Firestore transaction:", txErr);
+      }
+    }
+
+    return res.json({
+      success: true,
+      isPaid: false,
+      message: "Giao dịch chưa hoàn tất thanh toán hoặc đang được ngân hàng xử lý."
+    });
+
+  } catch (err: any) {
+    console.error("[Check PayOS Order Error]", err);
+    return res.status(500).json({ error: "Lỗi hệ thống khi kiểm tra đơn hàng.", details: err.message });
   }
 });
 
@@ -3877,33 +4099,56 @@ app.post("/webhook/payment", async (req, res) => {
     if (paymentSuccess) {
       console.log(`[Processing Payment] Cổng: ${detectedGateway}, Mã GD: ${transactionId}, Số tiền: ${amount} VND, Nội dung: "${description}"`);
 
-      // Đối soát tìm UserId thông minh/fuzzy từ nội dung chuyển khoản
-      let userId = await findUserFromDescription(description);
+      let userId: string | null = null;
+      let plan: string | undefined = undefined;
 
-      // Nếu không tìm thấy và là cổng PayOS, thử tra cứu ngược qua orderCode (transactionId) lưu trong database
-      if (!userId && detectedGateway === "PayOS" && transactionId) {
+      // 1. Nếu là cổng PayOS, ưu tiên tìm trực tiếp qua orderCode trong collection "transactions"
+      if (detectedGateway === "PayOS") {
+        const payosOrderCode = body.data?.orderCode ? String(body.data.orderCode) : "";
+        const payosRef = body.data?.reference ? String(body.data.reference) : "";
+        
         try {
           const dbInstance = await getPaymentDb();
           if (dbInstance) {
             const { doc, getDoc } = await import("firebase/firestore");
-            const txDocRef = doc(dbInstance, "transactions", transactionId);
-            const txSnap = await getDoc(txDocRef);
-            if (txSnap.exists()) {
-              const txData = txSnap.data();
-              userId = txData.userId;
-              console.log(`[Webhook PayOS Success] Khớp thành công UserId: ${userId} từ orderCode/transactionId: ${transactionId}`);
+            
+            // Thử tìm theo orderCode
+            if (payosOrderCode) {
+              const txSnap = await getDoc(doc(dbInstance, "transactions", payosOrderCode));
+              if (txSnap.exists()) {
+                const txData = txSnap.data();
+                userId = txData.userId || null;
+                plan = txData.plan;
+                console.log(`[Webhook PayOS Direct] Khớp thành công UserId: ${userId}, Plan: ${plan} từ orderCode #${payosOrderCode}`);
+              }
+            }
+
+            // Thử tìm theo reference
+            if (!userId && payosRef) {
+              const txSnapRef = await getDoc(doc(dbInstance, "transactions", payosRef));
+              if (txSnapRef.exists()) {
+                const txData = txSnapRef.data();
+                userId = txData.userId || null;
+                plan = txData.plan;
+                console.log(`[Webhook PayOS Direct] Khớp thành công UserId: ${userId}, Plan: ${plan} từ reference #${payosRef}`);
+              }
             }
           }
         } catch (dbErr) {
-          console.error("[Webhook PayOS Lookup Error]", dbErr);
+          console.error("[Webhook PayOS Direct Lookup Error]", dbErr);
         }
+      }
+
+      // 2. Nếu chưa có userId, đối soát thông minh từ description
+      if (!userId) {
+        userId = await findUserFromDescription(description);
       }
 
       if (userId) {
         console.log(`[Webhook] Tìm thấy mã User ID: ${userId} từ nội dung chuyển tiền. Bắt đầu kích hoạt VIP...`);
-        const resultUpgrade = await upgradeUserToVIP(userId, amount, transactionId, description);
+        const resultUpgrade = await upgradeUserToVIP(userId, amount, transactionId, description, plan);
         if (resultUpgrade.success) {
-          console.log(`[Webhook] Kích hoạt VIP hoàn tất thành công cho user: ${userId}`);
+          console.log(`[Webhook] Kích hoạt hoàn tất thành công cho user: ${userId}, gói: ${resultUpgrade.tier || plan}`);
         } else {
           console.error(`[Webhook] Kích hoạt VIP thất bại cho user: ${userId}: ${resultUpgrade.error}`);
           return await respondWithLog(500, {

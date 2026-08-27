@@ -1161,7 +1161,7 @@ export default function App() {
     };
   }, []);
 
-  // Automatically check URL query parameters for PayOS payment redirects on load
+  // Automatically check URL query parameters or localStorage for PayOS payment redirects & orders on load
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -1172,27 +1172,37 @@ export default function App() {
       const isSuccess = payosParam === "success" || statusParam === "success" || statusParam === "PAID";
       const isCancelled = payosParam === "cancelled" || statusParam === "cancelled" || statusParam === "CANCELLED";
 
+      // 1. Kiểm tra tham số từ URL
       if (isSuccess && orderParam) {
         console.log(`[PayOS Return] Detected successful payment. Order code to verify: ${orderParam}`);
         setPendingVerifyOrder(orderParam);
         setActiveTab("billing");
         setPayosRedirectStatus("success");
-        // Clear the URL query parameters so reloading doesn't re-trigger verification
         try {
+          localStorage.setItem("clipflow_pending_payos_order", orderParam);
           window.history.replaceState({}, document.title, window.location.pathname);
         } catch (historyErr) {
           console.warn("[History Shield] Failed to replace state in iframe sandbox:", historyErr);
         }
+      } else if (orderParam && !isCancelled) {
+        // Có mã đơn hàng truyền về
+        setPendingVerifyOrder(orderParam);
       } else if (isCancelled) {
         console.log(`[PayOS Return] Payment cancelled or timed out`);
         setActiveTab("billing");
         setPayosRedirectStatus("cancelled");
         setErrorMsg("Giao dịch thanh toán đã bị hủy bỏ bởi người dùng hoặc quá hạn.");
-        setTimeout(() => setErrorMsg(null), 8000);
         try {
+          localStorage.removeItem("clipflow_pending_payos_order");
           window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (historyErr) {
-          console.warn("[History Shield] Failed to replace state in iframe sandbox:", historyErr);
+        } catch (historyErr) {}
+        setTimeout(() => setErrorMsg(null), 8000);
+      } else {
+        // 2. Nếu không có URL param, kiểm tra xem có đơn hàng pending trong localStorage không
+        const storedPending = localStorage.getItem("clipflow_pending_payos_order");
+        if (storedPending) {
+          console.log(`[PayOS Storage] Found pending order in localStorage: ${storedPending}`);
+          setPendingVerifyOrder(storedPending);
         }
       }
     }
@@ -1227,30 +1237,69 @@ export default function App() {
     if (user && pendingVerifyOrder && !isAutoVerifying) {
       const autoVerifyPayment = async () => {
         setIsAutoVerifying(true);
-        console.log(`[Auto Verify] Initiating payment validation for order: ${pendingVerifyOrder}`);
+        console.log(`[Auto Verify] Initiating PayOS payment validation for order: ${pendingVerifyOrder}`);
         
         try {
-          if (!db) {
-            throw new Error("Không thể kết nối cơ sở dữ liệu Firestore để xác thực.");
+          // 1. First priority: Check directly with PayOS Live API & Backend Order Check
+          const checkRes = await fetch("/api/payment/check-payos-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderCode: pendingVerifyOrder,
+              userId: user.uid
+            })
+          });
+          const checkData = await checkRes.json();
+
+          if (checkData.success && checkData.isPaid) {
+            console.log("[Auto Verify Success via PayOS Live Check]", checkData);
+            const upgradedTier = (checkData.tier || "vip") as "free" | "mini" | "standard" | "vip";
+            const currentProfile = userProfile || {
+              userId: user.uid,
+              email: user.email || "user@clipflow.ai",
+              tier: "free" as const,
+              scriptCountToday: 0,
+              voiceCountToday: 0,
+              imageCountToday: 0,
+              lastQuotaReset: new Date().toDateString(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            const updatedProfile = {
+              ...currentProfile,
+              tier: upgradedTier,
+              updatedAt: new Date().toISOString()
+            };
+            setUserProfile(updatedProfile);
+            localStorage.setItem("clipflow_local_profile", JSON.stringify(updatedProfile));
+            try {
+              localStorage.removeItem("clipflow_pending_payos_order");
+              localStorage.removeItem("clipflow_pending_payos_plan");
+            } catch (e) {}
+
+            setUpgradedTierName(upgradedTier.toUpperCase());
+            setShowGlobalUpgradeCelebration(true);
+            setSuccessMsg(`🎉 Kích hoạt thành công! Tài khoản của bạn đã được nâng cấp lên gói ${upgradedTier.toUpperCase()} thành công.`);
+            setTimeout(() => setSuccessMsg(null), 8000);
+            await syncUserProfile(user);
+            return;
           }
-          
-          // 1. Fetch transaction metadata from Firestore transactions collection
-          const txDocRef = doc(db, "transactions", pendingVerifyOrder);
-          const txSnap = await getDoc(txDocRef);
-          
+
+          // 2. Secondary fallback: Fetch transaction metadata from Firestore and call manual verify
           let plan = "vip";
           let amount = 2000;
-          
-          if (txSnap.exists()) {
-            const txData = txSnap.data();
-            plan = txData.plan || "vip";
-            amount = txData.amount || 2000;
-            console.log(`[Auto Verify] Retrieved transaction: Plan = ${plan}, Amount = ${amount}`);
-          } else {
-            console.warn(`[Auto Verify] Order ${pendingVerifyOrder} document not found in Firestore. Proceeding with default lookup.`);
+          if (db) {
+            try {
+              const txDocRef = doc(db, "transactions", pendingVerifyOrder);
+              const txSnap = await getDoc(txDocRef);
+              if (txSnap.exists()) {
+                const txData = txSnap.data();
+                plan = txData.plan || "vip";
+                amount = txData.amount || 2000;
+              }
+            } catch (e) {}
           }
-          
-          // 2. Call the server-side verify-manual API endpoint
+
           const response = await fetch("/api/payment/verify-manual", {
             method: "POST",
             headers: {
@@ -1287,19 +1336,21 @@ export default function App() {
             };
             setUserProfile(updatedProfile);
             localStorage.setItem("clipflow_local_profile", JSON.stringify(updatedProfile));
+            try {
+              localStorage.removeItem("clipflow_pending_payos_order");
+              localStorage.removeItem("clipflow_pending_payos_plan");
+            } catch (e) {}
 
+            setUpgradedTierName(upgradedTier.toUpperCase());
+            setShowGlobalUpgradeCelebration(true);
             setSuccessMsg(`🎉 Kích hoạt thành công! Tài khoản của bạn đã được nâng cấp lên gói ${upgradedTier.toUpperCase()} thành công.`);
             setTimeout(() => setSuccessMsg(null), 8000);
             await syncUserProfile(user);
           } else {
-            console.error("[Auto Verify Failed]", resData.error);
-            setErrorMsg(`Tự động kích hoạt thất bại: ${resData.error || "Giao dịch chưa hoàn thành hoặc chưa được ghi nhận trên hệ thống ngân hàng."}`);
-            setTimeout(() => setErrorMsg(null), 8000);
+            console.log("[Auto Verify Notice]", resData.error || checkData.message);
           }
         } catch (err: any) {
           console.error("[Auto Verify Error]", err);
-          setErrorMsg("Lỗi trong lúc tự động xác thực gói cước: " + (err.message || String(err)));
-          setTimeout(() => setErrorMsg(null), 8000);
         } finally {
           setIsAutoVerifying(false);
           setPendingVerifyOrder(null);
@@ -1309,6 +1360,75 @@ export default function App() {
       autoVerifyPayment();
     }
   }, [user, pendingVerifyOrder]);
+
+  // Window focus & visibility listener to verify payments when user returns to tab
+  useEffect(() => {
+    if (!user) return;
+
+    const checkPendingOnFocus = async () => {
+      const storedPending = localStorage.getItem("clipflow_pending_payos_order");
+      if (storedPending && !isAutoVerifying) {
+        console.log(`[Window Focus Check] Checking pending order: ${storedPending}`);
+        try {
+          const checkRes = await fetch("/api/payment/check-payos-order", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderCode: storedPending,
+              userId: user.uid
+            })
+          });
+          const checkData = await checkRes.json();
+          if (checkData.success && checkData.isPaid) {
+            const upgradedTier = (checkData.tier || "vip") as "free" | "mini" | "standard" | "vip";
+            const currentProfile = userProfile || {
+              userId: user.uid,
+              email: user.email || "user@clipflow.ai",
+              tier: "free" as const,
+              scriptCountToday: 0,
+              voiceCountToday: 0,
+              imageCountToday: 0,
+              lastQuotaReset: new Date().toDateString(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            const updatedProfile = {
+              ...currentProfile,
+              tier: upgradedTier,
+              updatedAt: new Date().toISOString()
+            };
+            setUserProfile(updatedProfile);
+            localStorage.setItem("clipflow_local_profile", JSON.stringify(updatedProfile));
+            try {
+              localStorage.removeItem("clipflow_pending_payos_order");
+              localStorage.removeItem("clipflow_pending_payos_plan");
+            } catch (e) {}
+
+            setUpgradedTierName(upgradedTier.toUpperCase());
+            setShowGlobalUpgradeCelebration(true);
+            setSuccessMsg(`🎉 Kích hoạt thành công! Gói ${upgradedTier.toUpperCase()} đã được cập nhật vào tài khoản của bạn.`);
+            setTimeout(() => setSuccessMsg(null), 8000);
+            await syncUserProfile(user);
+          }
+        } catch (err) {
+          console.warn("[Focus Check Error]", err);
+        }
+      }
+    };
+
+    window.addEventListener("focus", checkPendingOnFocus);
+    const handleVis = () => {
+      if (document.visibilityState === "visible") {
+        checkPendingOnFocus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVis);
+
+    return () => {
+      window.removeEventListener("focus", checkPendingOnFocus);
+      document.removeEventListener("visibilitychange", handleVis);
+    };
+  }, [user, isAutoVerifying, userProfile]);
 
   // Google Workspace Custom Integration States
   const [workspaceToken, setWorkspaceToken] = useState<string | null>(null);
