@@ -29,11 +29,12 @@ interface IdeaMixerProps {
   onMixSuccess: (generatedIdea: string) => void;
   isDarkTheme?: boolean;
   onCheckAuthForAI?: (featureName?: string) => boolean;
+  defaultCollapsed?: boolean;
 }
 
 type MixerField = "context" | "character" | "action" | "result";
 
-export function IdeaMixer({ onMixSuccess, isDarkTheme = false, onCheckAuthForAI }: IdeaMixerProps) {
+export function IdeaMixer({ onMixSuccess, isDarkTheme = false, onCheckAuthForAI, defaultCollapsed = true }: IdeaMixerProps) {
   // Chosen states
   const [context, setContext] = useState("");
   const [character, setCharacter] = useState("");
@@ -47,7 +48,7 @@ export function IdeaMixer({ onMixSuccess, isDarkTheme = false, onCheckAuthForAI 
   const [errorMsg, setErrorMsg] = useState("");
   const [isEnteringCustom, setIsEnteringCustom] = useState(false);
   const [customInputVal, setCustomInputVal] = useState("");
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isHidden, setIsHidden] = useState(false);
 
   // Get active dataset
