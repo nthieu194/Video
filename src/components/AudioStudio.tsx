@@ -328,9 +328,11 @@ export default function AudioStudio({
   const [segmentRecorder, setSegmentRecorder] = useState<MediaRecorder | null>(null);
   const [generatingSegmentIdx, setGeneratingSegmentIdx] = useState<number | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
+  const [isDownloadingAll, setIsDownloadingAll] = useState<boolean>(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [savingSegmentIdx, setSavingSegmentIdx] = useState<number | null>(null);
   const [loadingCloudAudios, setLoadingCloudAudios] = useState<boolean>(false);
+  const [playingCustomSegmentIdx, setPlayingCustomSegmentIdx] = useState<number | null>(null);
 
   // --- Character definitions & Clone simulation voice profiles ---
   const [characterConfigs, setCharacterConfigs] = useState<Record<string, CharacterVoiceConfig>>(() => {
@@ -530,8 +532,11 @@ export default function AudioStudio({
       setEditorText(track.content);
       setScriptTitle(track.title);
       setSceneTitle(track.sceneTitle);
+      // Reset segment audio recordings when switching tracks to prevent audio bleeding
+      setCustomSegmentAudios({});
+      localStorage.removeItem("clipflow_custom_segment_audios");
     }
-  }, [activeTrackIndex, playlist]);
+  }, [activeTrackIndex]);
 
   // Sync voice sample text when selected independent voice changes
   useEffect(() => {
@@ -691,6 +696,147 @@ export default function AudioStudio({
     } catch (err: any) {
       console.error("Lỗi tải xuống âm thanh:", err);
       showFeedback(`Lỗi tải xuống: ${err.message}`);
+    }
+  };
+
+  // Helper to convert Web Audio AudioBuffer to standard WAV Blob
+  const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const length = buffer.length * blockAlign;
+    const bufferLength = 44 + length;
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+
+    const writeString = (v: DataView, offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        v.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+
+    // RIFF identifier
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + length, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, length, true);
+
+    // Interleave channels
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        let sample = buffer.getChannelData(channel)[i];
+        sample = Math.max(-1, Math.min(1, sample));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  };
+
+  const clearAllSegmentAudios = () => {
+    setCustomSegmentAudios({});
+    localStorage.removeItem("clipflow_custom_segment_audios");
+    showFeedback("Đã làm mới và dọn dẹp sạch toàn bộ âm thanh ghi âm/lồng tiếng của kịch bản!");
+  };
+
+  const downloadAllBulkAudio = async () => {
+    // Strictly filter only indices (0 to textSegments.length - 1) of the CURRENT script
+    const validSegmentIndices = textSegments
+      .map((_, i) => i)
+      .filter(i => !!customSegmentAudios[i]);
+
+    if (validSegmentIndices.length === 0) {
+      showFeedback("Chưa có âm thanh lồng tiếng nào của kịch bản hiện tại để tải về!");
+      return;
+    }
+
+    setIsDownloadingAll(true);
+    showFeedback(`Đang tổng hợp và xuất tệp âm thanh lồng tiếng cho ${validSegmentIndices.length} câu thoại...`);
+
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+
+      const audioBuffers: AudioBuffer[] = [];
+      for (const idx of validSegmentIndices) {
+        const audioUrl = customSegmentAudios[idx];
+        if (!audioUrl) continue;
+
+        let arrayBuffer: ArrayBuffer;
+        if (audioUrl.startsWith("data:")) {
+          const base64Data = audioUrl.split(",")[1];
+          const binaryString = atob(base64Data);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else {
+          const res = await fetch(audioUrl);
+          arrayBuffer = await res.arrayBuffer();
+        }
+
+        const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        audioBuffers.push(decoded);
+      }
+
+      if (audioBuffers.length === 0) {
+        throw new Error("Không thể giải mã dữ liệu âm thanh");
+      }
+
+      const numberOfChannels = Math.max(...audioBuffers.map(b => b.numberOfChannels));
+      const sampleRate = audioBuffers[0].sampleRate;
+      
+      // Calculate sample length with a natural 0.25s pause between sentences
+      const gapSamples = Math.floor(sampleRate * 0.25);
+      const totalLength = audioBuffers.reduce((sum, b) => sum + b.length, 0) + (audioBuffers.length - 1) * gapSamples;
+
+      const mergedBuffer = ctx.createBuffer(numberOfChannels, totalLength, sampleRate);
+
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const channelData = mergedBuffer.getChannelData(channel);
+        let offset = 0;
+        for (let bIdx = 0; bIdx < audioBuffers.length; bIdx++) {
+          const buffer = audioBuffers[bIdx];
+          const srcChannelData = buffer.numberOfChannels > channel ? buffer.getChannelData(channel) : buffer.getChannelData(0);
+          channelData.set(srcChannelData, offset);
+          offset += buffer.length + (bIdx < audioBuffers.length - 1 ? gapSamples : 0);
+        }
+      }
+
+      const wavBlob = audioBufferToWavBlob(mergedBuffer);
+      const url = URL.createObjectURL(wavBlob);
+
+      const link = document.createElement("a");
+      const safeTitle = (scriptTitle || "kich-ban-long-tieng-ai").replace(/[^a-zA-Z0-9_\-\u00C0-\u024F\u1E00-\u1EFF]/g, "_");
+      link.href = url;
+      link.download = `${safeTitle}-long-tieng-dong-loat.wav`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showFeedback("Đã tải xuống thành công toàn bộ tệp âm thanh lồng tiếng đồng loạt!");
+    } catch (err: any) {
+      console.error("Lỗi khi ghép và tải âm thanh đồng loạt:", err);
+      showFeedback(`Lỗi khi xuất tệp âm thanh đồng loạt: ${err.message}`);
+    } finally {
+      setIsDownloadingAll(false);
     }
   };
 
@@ -902,6 +1048,9 @@ export default function AudioStudio({
   const generateAIVoicesForAll = async () => {
     if (textSegments.length === 0) return;
     setIsGeneratingAll(true);
+    // Clear previous segment audios so that all sentences are cleanly synthesized fresh for this exact script
+    setCustomSegmentAudios({});
+    localStorage.removeItem("clipflow_custom_segment_audios");
     setBatchProgress({ current: 0, total: textSegments.length });
     showFeedback(`Đang khởi tạo lồng tiếng AI đồng loạt cho ${textSegments.length} câu thoại kịch bản...`);
     
@@ -1285,6 +1434,25 @@ export default function AudioStudio({
 
     setTextSegments(segments);
 
+    // Prune any segment audio keys that exceed the current segments length
+    setCustomSegmentAudios(prev => {
+      let changed = false;
+      const pruned: Record<number, string> = {};
+      Object.entries(prev).forEach(([key, val]) => {
+        const idx = Number(key);
+        if (idx >= 0 && idx < segments.length && typeof val === "string") {
+          pruned[idx] = val;
+        } else {
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(pruned));
+        return pruned;
+      }
+      return prev;
+    });
+
     // Build visual normalized SSML-structured script display
     let ssmlDisplay = `<speak>\n  <!-- Studio MC Podcast Auto-Normalized Output -->\n`;
     segments.forEach(seg => {
@@ -1373,6 +1541,41 @@ export default function AudioStudio({
     setIsSpeaking(false);
     setIsPaused(false);
     setCurrentSegmentIdx(-1);
+    setPlayingCustomSegmentIdx(null);
+  };
+
+  const togglePlaySegmentAudio = (sIdx: number, audioSrc: string) => {
+    if (playingCustomSegmentIdx === sIdx) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingCustomSegmentIdx(null);
+      return;
+    }
+
+    stopPlaying();
+
+    try {
+      const audio = new Audio(audioSrc);
+      currentAudioRef.current = audio;
+      setPlayingCustomSegmentIdx(sIdx);
+      audio.onended = () => {
+        setPlayingCustomSegmentIdx(null);
+        currentAudioRef.current = null;
+      };
+      audio.onerror = () => {
+        setPlayingCustomSegmentIdx(null);
+        currentAudioRef.current = null;
+      };
+      audio.play().catch(err => {
+        console.warn("Lỗi phát audio phân đoạn:", err);
+        setPlayingCustomSegmentIdx(null);
+      });
+    } catch (e) {
+      console.warn("Lỗi khởi tạo audio phân đoạn:", e);
+      setPlayingCustomSegmentIdx(null);
+    }
   };
 
   const pausePlaying = () => {
@@ -1673,6 +1876,47 @@ export default function AudioStudio({
     savePlaylist([]);
     setActiveTrackIndex(-1);
     showFeedback("Đã dọn dẹp danh sách phát.");
+  };
+
+  const transferAllPlaylistToStudio = () => {
+    if (!playlist || playlist.length === 0) {
+      showFeedback("Danh sách phát hiện chưa có phân cảnh nào để đưa lên phòng thu!");
+      return;
+    }
+
+    // Combine dialogue content of all scenes/tracks in playlist
+    const combinedContent = playlist
+      .map(track => track.content?.trim())
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!combinedContent) {
+      showFeedback("Các phân cảnh trong danh sách phát không có nội dung thoại!");
+      return;
+    }
+
+    // Switch to script mode
+    setStudioMode("script");
+
+    // Set editor content and informative titles
+    setEditorText(combinedContent);
+    const mainTitle = playlist[0]?.title || "Kịch bản tổng hợp";
+    setScriptTitle(mainTitle);
+    setSceneTitle(`Toàn bộ ${playlist.length} phân cảnh`);
+
+    // Reset segment audios for new batch generation
+    setCustomSegmentAudios({});
+    localStorage.removeItem("clipflow_custom_segment_audios");
+
+    showFeedback(`Đã chuyển toàn bộ ${playlist.length} phân cảnh lên Phòng Thu Âm & Lồng Tiếng AI đồng loạt thành công!`);
+
+    // Smooth scroll to studio editor workspace
+    setTimeout(() => {
+      const studioElement = document.getElementById("audio-studio-workspace");
+      if (studioElement) {
+        studioElement.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
   };
 
   // --- Independent Audio Generation Helpers ---
@@ -2134,18 +2378,29 @@ export default function AudioStudio({
         </div>
 
         <div className="flex gap-2 relative z-10 self-stretch md:self-auto justify-end">
-          <button
-            onClick={playScript}
-            disabled={!editorText}
-            className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl transition-all ${
-              isSpeaking
-                ? "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/10 cursor-not-allowed"
-                : "bg-cyan-500 hover:bg-cyan-600 text-slate-950 shadow-cyan-500/20 hover:-translate-y-0.5"
-            }`}
-          >
-            <Play size={14} className="fill-current" />
-            <span>{isSpeaking ? "Đang phát âm thanh..." : "Bắt đầu đọc kịch bản"}</span>
-          </button>
+          {studioMode === "script" ? (
+            <button
+              onClick={playScript}
+              disabled={!editorText}
+              className={`flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs shadow-xl transition-all cursor-pointer ${
+                isSpeaking
+                  ? "bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-amber-500/10 cursor-not-allowed"
+                  : "bg-cyan-500 hover:bg-cyan-600 text-slate-950 shadow-cyan-500/20 hover:-translate-y-0.5"
+              }`}
+            >
+              <Play size={14} className="fill-current" />
+              <span>{isSpeaking ? "Đang phát âm thanh..." : "Bắt đầu đọc kịch bản"}</span>
+            </button>
+          ) : (
+            <button
+              onClick={generateIndependentVoiceover}
+              disabled={!independentText.trim() || generatingVoice}
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs bg-gradient-to-r from-[#00F2EA] to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-950 shadow-xl shadow-cyan-500/20 hover:-translate-y-0.5 transition-all cursor-pointer disabled:opacity-40"
+            >
+              <Sparkles size={14} className="text-slate-950 fill-current" />
+              <span>{generatingVoice ? "Đang tạo giọng nói..." : "Tạo giọng nói AI"}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -2171,7 +2426,7 @@ export default function AudioStudio({
           }`}
         >
           <FileAudio size={14} className={studioMode === "text_pdf" ? "text-[#00F2EA]" : ""} />
-          <span>Chuyển Văn bản & PDF tự do</span>
+          <span>Chuyển Văn bản thành âm thanh</span>
         </button>
       </div>
 
@@ -2183,10 +2438,11 @@ export default function AudioStudio({
       )}
 
       {/* 2. Main Studio Grid Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div id="audio-studio-workspace" className="grid grid-cols-1 lg:grid-cols-12 gap-6 scroll-mt-6">
         
         {studioMode === "script" ? (
-          /* Left Side: Editorial, Dual-Translate & Clone Configuration */
+          <>
+          {/* Left Side: Editorial, Dual-Translate & Clone Configuration */}
           <div className="lg:col-span-8 space-y-6">
           
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-5">
@@ -2485,7 +2741,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
               )}
 
               {/* Master Control & Playback Bar for the Entire Script */}
-              {Object.keys(customSegmentAudios).length > 0 && (
+              {textSegments.some((_, i) => !!customSegmentAudios[i]) && (
                 <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-cyan-950 text-white rounded-2xl border border-cyan-500/30 shadow-xl space-y-3">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2.5">
                     <div className="flex items-center gap-2">
@@ -2496,7 +2752,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                         <h4 className="font-extrabold text-xs text-white flex items-center gap-2">
                           <span>KẾT QUẢ LỒNG TIẾNG ĐỒNG LOẠT HOÀN TẤT</span>
                           <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                            {Object.keys(customSegmentAudios).length}/{textSegments.length} câu đã có Audio
+                            {textSegments.filter((_, i) => !!customSegmentAudios[i]).length}/{textSegments.length} câu đã có Audio
                           </span>
                         </h4>
                         <p className="text-[10px] text-slate-400">
@@ -2505,7 +2761,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={isSpeaking ? stopPlaying : playScript}
@@ -2527,6 +2783,30 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                           </>
                         )}
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={downloadAllBulkAudio}
+                        disabled={isDownloadingAll}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
+                        title="Tải tệp âm thanh WAV hoàn chỉnh ghép từ tất cả các câu thoại lồng tiếng AI của kịch bản hiện tại"
+                      >
+                        {isDownloadingAll ? (
+                          <Loader2 size={13} className="animate-spin text-slate-950" />
+                        ) : (
+                          <Download size={13} className="text-slate-950 font-bold" />
+                        )}
+                        <span>{isDownloadingAll ? "Đang xuất tệp..." : "Tải lồng tiếng đồng loạt"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={clearAllSegmentAudios}
+                        className="p-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 hover:border-rose-500 text-rose-300 hover:text-white rounded-xl transition-all cursor-pointer"
+                        title="Xóa toàn bộ bản ghi âm / lồng tiếng cũ của phòng thu"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2537,7 +2817,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                   Áp dụng <strong>giọng đọc nâng cao 3 miền</strong> hoặc tự sản xuất âm thanh chất lượng phòng thu cho từng phân đoạn thoại. Khi phát kịch bản, hệ thống sẽ tự động phát các tệp âm thanh AI này.
                 </span>
                 <span className="text-[10px] bg-cyan-100 text-cyan-800 font-mono font-bold px-2.5 py-1 rounded-full border border-cyan-200">
-                  {Object.keys(customSegmentAudios).length} / {textSegments.length} câu đã có giọng thực tế
+                  {textSegments.filter((_, i) => !!customSegmentAudios[i]).length} / {textSegments.length} câu đã có giọng thực tế
                 </span>
               </div>
 
@@ -2584,162 +2864,19 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                             type="button"
                             onClick={() => generateAIVoiceForSegment(sIdx)}
                             disabled={isGeneratingThis || isGeneratingAll}
-                            className={`px-2 py-1 text-[9px] font-bold rounded-lg flex items-center gap-1 transition-all ${
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all cursor-pointer ${
                               customAudio 
                                 ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
-                                : "bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 shadow-sm hover:-translate-y-0.5"
+                                : "bg-cyan-50 hover:bg-cyan-100 text-cyan-700 border border-cyan-200 shadow-xs hover:-translate-y-0.5"
                             }`}
+                            title="Lồng tiếng AI cho câu thoại này"
                           >
                             {isGeneratingThis ? (
                               <Loader2 size={10} className="animate-spin" />
                             ) : (
                               <Sparkles size={10} />
                             )}
-                            <span>{customAudio ? "Lồng tiếng lại bằng AI" : "Lồng tiếng AI (Gemini)"}</span>
-                          </button>
-
-                          {/* Quick single segment tester */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              stopPlaying();
-                              setCurrentSegmentIdx(sIdx);
-                              setIsSpeaking(true);
-                              setIsPaused(false);
-                              
-                              const cleanText = seg.text.replace(/\[[^\]]+\]/g, "").trim();
-                              if (customAudio && isValidAudioUrl(customAudio)) {
-                                try {
-                                  const audio = new Audio(customAudio);
-                                  currentAudioRef.current = audio;
-                                  audio.onended = () => { setIsSpeaking(false); currentAudioRef.current = null; };
-                                  audio.play().catch(() => setIsSpeaking(false));
-                                } catch (err) {
-                                  console.warn("Lỗi phát customAudio:", err);
-                                  setIsSpeaking(false);
-                                }
-                              } else if (premiumVoice && !quotaExceeded) {
-                                // Real-time fetch and play!
-                                const fetchAndPlay = async () => {
-                                  if (!await checkAndIncrementVoiceQuota()) return;
-                                  try {
-                                    let voiceName = "Charon";
-                                    let personality = premiumVoice.description;
-                                    if (premiumVoice.id === "vi-north-male") {
-                                      voiceName = "Charon";
-                                      personality = "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.";
-                                    } else if (premiumVoice.id === "vi-north-female") {
-                                      voiceName = "Kore";
-                                      personality = "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.";
-                                    } else if (premiumVoice.id === "vi-central-male") {
-                                      voiceName = "Fenrir";
-                                      personality = "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.";
-                                    } else if (premiumVoice.id === "vi-central-female") {
-                                      voiceName = "Kore";
-                                      personality = "Giọng nữ miền Trung Huế, đằm thắm, dịu dàng, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang.";
-                                    } else if (premiumVoice.id === "vi-south-male") {
-                                      voiceName = "Puck";
-                                      personality = "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Gòn ấm áp.";
-                                    } else if (premiumVoice.id === "vi-south-female") {
-                                      voiceName = "Zephyr";
-                                      personality = "Giọng nữ miền Nam Sài Gòn, trẻ trung, mượt mà, tươi tắn, duyên dáng và tràn đầy năng lượng tích cực.";
-                                    }
-
-                                    const response = await fetch("/api/audio-studio/generate-tts", {
-                                      method: "POST",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({
-                                        text: cleanText,
-                                        voiceName,
-                                        personality
-                                      })
-                                    });
-
-                                    const data = await response.json();
-                                    if (data.success && data.audioBase64) {
-                                      const mimeType = data.mimeType || "audio/mp3";
-                                      const audioUrl = `data:${mimeType};base64,${data.audioBase64}`;
-                                      if (isValidAudioUrl(audioUrl)) {
-                                        setCustomSegmentAudios(prev => {
-                                          const updated = { ...prev, [sIdx]: audioUrl };
-                                          localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
-                                          return updated;
-                                        });
-                                        try {
-                                          const audio = new Audio(audioUrl);
-                                          currentAudioRef.current = audio;
-                                          audio.onended = () => { setIsSpeaking(false); currentAudioRef.current = null; };
-                                          audio.play().catch(() => setIsSpeaking(false));
-                                          return;
-                                        } catch (err) {
-                                          console.warn("Lỗi khởi tạo audio lồng tiếng AI:", err);
-                                        }
-                                      }
-                                    } else {
-                                      const details = data.details || "";
-                                      const isQuota = data.isQuota ||
-                                                      details.toLowerCase().includes("quota") || 
-                                                      details.toLowerCase().includes("limit") || 
-                                                      details.toLowerCase().includes("429") || 
-                                                      details.toLowerCase().includes("resource_exhausted") ||
-                                                      data.error?.toLowerCase().includes("quota");
-                                      if (isQuota) {
-                                        setQuotaExceeded(true);
-                                        showFeedback("Hạn mức Gemini AI đã hết hôm nay. Đang phát bằng giọng chuẩn hệ thống!");
-                                      }
-                                      throw new Error(data.error || "Không thể tạo giọng đọc AI.");
-                                    }
-                                  } catch (e: any) {
-                                    console.warn("Lỗi tạo giọng Premium AI câu thoại:", e);
-                                    if (typeof window !== "undefined" && window.speechSynthesis) {
-                                      window.speechSynthesis.cancel();
-                                    }
-                                    const utterance = new SpeechSynthesisUtterance(cleanText);
-                                    const defaultViVoice = availableVoices.find(v => v.lang.includes("vi-VN") || v.lang.includes("vi"))?.voiceURI || "";
-                                    const uri = charConfig?.voiceURI || defaultViVoice;
-                                    const match = availableVoices.find(v => v.voiceURI === uri);
-                                    if (match && match.lang && match.lang !== "unknown") {
-                                      utterance.voice = match;
-                                      utterance.lang = match.lang;
-                                    } else {
-                                      utterance.lang = "vi-VN";
-                                    }
-                                    utterance.rate = charConfig?.rate || 1.0;
-                                    utterance.pitch = charConfig?.pitch || 1.0;
-                                    utterance.onend = () => setIsSpeaking(false);
-                                    utterance.onerror = () => setIsSpeaking(false);
-                                    window.speechSynthesis.speak(utterance);
-                                    return;
-                                  }
-                                  setIsSpeaking(false);
-                                };
-                                fetchAndPlay();
-                              } else {
-                                // Fallback TTS
-                                if (typeof window !== "undefined" && window.speechSynthesis) {
-                                  window.speechSynthesis.cancel();
-                                }
-                                const utterance = new SpeechSynthesisUtterance(cleanText);
-                                const defaultViVoice = availableVoices.find(v => v.lang.includes("vi-VN") || v.lang.includes("vi"))?.voiceURI || "";
-                                const uri = charConfig?.voiceURI || defaultViVoice;
-                                const match = availableVoices.find(v => v.voiceURI === uri);
-                                if (match && match.lang && match.lang !== "unknown") {
-                                  utterance.voice = match;
-                                  utterance.lang = match.lang;
-                                } else {
-                                  utterance.lang = "vi-VN";
-                                }
-                                utterance.rate = charConfig?.rate || 1.0;
-                                utterance.pitch = charConfig?.pitch || 1.0;
-                                utterance.onend = () => setIsSpeaking(false);
-                                utterance.onerror = () => setIsSpeaking(false);
-                                window.speechSynthesis.speak(utterance);
-                              }
-                            }}
-                            className="px-2 py-1 text-[9px] bg-slate-900 hover:bg-slate-800 text-[#00F2EA] font-extrabold rounded-lg flex items-center gap-1 transition-all"
-                          >
-                            <Volume2 size={10} />
-                            <span>Nghe thử câu thoại này</span>
+                            <span>{isGeneratingThis ? "Đang tạo..." : "Lồng tiếng"}</span>
                           </button>
                         </div>
                       </div>
@@ -2750,65 +2887,83 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                       </p>
 
                       {/* Audio action controls per segment */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 pt-2.5 bg-slate-100/50 p-2.5 rounded-xl">
-                        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-                          {customAudio ? (
-                            <>
-                              <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 rounded-lg">
-                                <span className="flex h-2 w-2 relative">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                </span>
-                                <span className="text-[10px] font-bold">
-                                  Đã có giọng AI
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteSegmentAudio(sIdx)}
-                                  className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
-                                  title="Xóa âm thanh này để lồng tiếng lại"
-                                >
-                                  <Trash2 size={11} />
-                                </button>
-                              </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 bg-slate-100/40 px-3 py-2 rounded-xl">
+                        {customAudio ? (
+                          <>
+                            {/* Trạng thái âm thanh */}
+                            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200/60 px-2 py-1 rounded-lg">
+                              <span className="flex h-2 w-2 relative">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                              </span>
+                              <span className="text-[10px] font-bold">
+                                Đã có giọng AI
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => deleteSegmentAudio(sIdx)}
+                                className="p-0.5 text-slate-400 hover:text-red-500 rounded transition-colors cursor-pointer"
+                                title="Xóa âm thanh này để lồng tiếng lại"
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            </div>
 
-                              {/* Native Audio Preview Controller */}
-                              <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg shadow-xs">
-                                <audio
-                                  controls
-                                  src={customAudio}
-                                  className="h-6 max-w-[200px] text-xs focus:outline-none"
-                                  preload="metadata"
-                                />
-                              </div>
+                            {/* Hàng nút chức năng: Nghe, Tải, Lưu thư viện (cùng 1 hàng, không vùng đệm trắng) */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {/* Nút Nghe / Dừng */}
+                              <button
+                                type="button"
+                                onClick={() => togglePlaySegmentAudio(sIdx, customAudio)}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-black rounded-lg shadow-xs transition-all hover:-translate-y-0.5 cursor-pointer ${
+                                  playingCustomSegmentIdx === sIdx
+                                    ? "bg-amber-500 hover:bg-amber-600 text-slate-950 ring-1 ring-amber-400"
+                                    : "bg-slate-900 hover:bg-slate-800 text-[#00F2EA]"
+                                }`}
+                                title={playingCustomSegmentIdx === sIdx ? "Dừng phát câu thoại" : "Nghe câu thoại"}
+                              >
+                                {playingCustomSegmentIdx === sIdx ? (
+                                  <>
+                                    <Pause size={11} className="fill-current" />
+                                    <span>Dừng</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play size={11} className="fill-current" />
+                                    <span>Nghe</span>
+                                  </>
+                                )}
+                              </button>
 
+                              {/* Nút Tải */}
                               <button
                                 type="button"
                                 onClick={() => downloadSegmentAudio(sIdx)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-xs transition-all hover:-translate-y-0.5 cursor-pointer"
                                 title="Tải tệp âm thanh này về máy"
                               >
                                 <Download size={11} />
-                                <span>Tải MP3</span>
+                                <span>Tải</span>
                               </button>
 
+                              {/* Nút Lưu thư viện */}
                               <button
                                 type="button"
                                 onClick={() => saveSegmentToCloud(sIdx)}
                                 disabled={savingSegmentIdx === sIdx}
-                                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
-                                title="Lưu trữ phân đoạn này lên thư viện cá nhân"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-[10px] font-black rounded-lg shadow-xs transition-all hover:-translate-y-0.5 cursor-pointer"
+                                title="Lưu trữ phân đoạn này vào thư viện"
                               >
                                 <Cloud size={11} className={savingSegmentIdx === sIdx ? "animate-pulse" : ""} />
-                                <span>{savingSegmentIdx === sIdx ? "Đang lưu..." : "Lưu Cloud"}</span>
+                                <span>{savingSegmentIdx === sIdx ? "Đang lưu..." : "Lưu thư viện"}</span>
                               </button>
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic">
-                              Chưa lồng tiếng AI cho câu thoại này
-                            </span>
-                          )}
-                        </div>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic py-0.5">
+                            Chưa lồng tiếng AI cho câu thoại này
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -3119,18 +3274,347 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
               </div>
             </div>
           </div>
+
+          {/* Right Side for Script Mode: Playlist Area, Personal Favorites & Script Library */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Playlist Core Area */}
+            <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-gradient-to-tr from-[#FF3B5C] to-red-600 text-white rounded-lg">
+                    <Radio size={14} className="animate-pulse" />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-sm tracking-tight text-white mb-0.5">Playlist Studio</h3>
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Danh sách phát âm thanh</span>
+                  </div>
+                </div>
+                
+                {playlist.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={transferAllPlaylistToStudio}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-[#00F2EA] to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-950 font-black text-[10px] rounded-lg shadow-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                      title="Đưa tất cả phân cảnh lên phòng thu âm đồng loạt"
+                    >
+                      <Mic size={11} className="fill-current text-slate-950" />
+                      <span>Lên phòng thu</span>
+                    </button>
+                    <button
+                      onClick={clearPlaylist}
+                      className="p-1 text-[10px] text-zinc-400 hover:text-white transition-colors"
+                      title="Dọn dẹp danh sách phát"
+                    >
+                      Dọn dẹp
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {playlist.length === 0 ? (
+                <div className="py-8 text-center space-y-2">
+                  <Music size={28} className="mx-auto text-slate-700 animate-bounce" />
+                  <p className="text-xs text-slate-500 leading-relaxed px-4">
+                    Chưa có phân cảnh nào trong danh sách phát. Chọn kịch bản từ Kho dưới đây để dán vào!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Main Action Button: Transfer all scenes to studio at once */}
+                  <button
+                    type="button"
+                    onClick={transferAllPlaylistToStudio}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-[#00F2EA] via-cyan-400 to-indigo-500 hover:from-cyan-400 hover:via-indigo-500 hover:to-indigo-600 text-slate-950 font-black text-xs rounded-2xl shadow-lg hover:shadow-cyan-500/25 transition-all flex items-center justify-between group cursor-pointer active:scale-98 border border-cyan-300/40"
+                    title="Đưa tất cả các phân cảnh trong danh sách phát lên phòng thu âm đồng loạt để lồng tiếng AI"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="p-1.5 bg-slate-950 text-[#00F2EA] rounded-xl shadow-xs">
+                        <Mic size={14} className="animate-pulse" />
+                      </span>
+                      <div className="text-left">
+                        <span className="block font-black text-xs text-slate-950 leading-tight">Đưa tất cả phân cảnh lên phòng thu âm</span>
+                        <span className="block text-[9px] font-bold text-slate-800/80">Lồng tiếng AI đồng loạt cho {playlist.length} phân cảnh</span>
+                      </div>
+                    </div>
+                    <span className="p-1 bg-slate-950/10 rounded-lg group-hover:translate-x-1 transition-transform">
+                      <ArrowRight size={14} className="text-slate-950" />
+                    </span>
+                  </button>
+
+                  <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-thin">
+                    {playlist.map((track, idx) => {
+                      const isActive = idx === activeTrackIndex;
+                      return (
+                        <div
+                          key={track.id}
+                          onClick={() => setActiveTrackIndex(idx)}
+                          className={`p-3 rounded-2xl cursor-pointer border transition-all relative group flex justify-between items-center ${
+                            isActive
+                              ? "bg-slate-800 border-indigo-500/50 shadow-lg shadow-indigo-500/5"
+                              : "bg-slate-800/30 hover:bg-slate-800/50 border-slate-800 hover:border-slate-700"
+                          }`}
+                        >
+                          <div className="space-y-1 max-w-[80%]">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="text-[10px] font-black text-[#00F2EA] tracking-wide truncate max-w-[120px]">
+                                {track.title}
+                              </span>
+                              <span className="text-[9px] text-slate-500">•</span>
+                              <span className="text-[9px] text-slate-400 font-medium font-mono truncate">
+                                {track.sceneTitle}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 line-clamp-1 leading-snug">
+                              {track.content}
+                            </p>
+                            <div className="flex items-center gap-1 mt-1">
+                              <Clock size={8} className="text-slate-500" />
+                              <span className="text-[8px] font-mono text-slate-500">Dự kiến ~{track.duration}s</span>
+                              {track.tags.map((tag, tIdx) => (
+                                <span key={tIdx} className="text-[7px] font-bold px-1.5 py-0.2 bg-white/5 rounded text-[#FF3B5C]">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={(e) => deletePlaylistTrack(idx, e)}
+                            className="p-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 hover:border-rose-500 text-rose-400 hover:text-rose-200 transition-all rounded-lg cursor-pointer"
+                            title="Xóa phân cảnh"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-3 text-center space-y-1 hover:bg-slate-800/60 transition-all">
+                <span className="text-[9px] font-mono text-slate-400 block uppercase font-bold tracking-wider">
+                  Gợi ý sắp xếp chuỗi logic
+                </span>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Nên xếp xen kẽ [Lời dẫn] - [Hội thoại gay cấn] - [CTA bán hàng] để giữ chân độc thính Podcast tốt nhất.
+                </p>
+              </div>
+            </div>
+
+            {/* Personalized Favorites area */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+              <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                <BookOpen size={16} className="text-cyan-500" />
+                <span>Thư viện cá nhân hóa ({personalFavorites.length})</span>
+              </span>
+
+              {personalFavorites.length === 0 ? (
+                <div className="py-4 text-center text-xs text-slate-400">
+                  Chưa lưu kịch bản cá nhân nào. Bấm nút "Lưu vào khu vực cá nhân hóa" khi biên tập xong để lưu trữ nhanh.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
+                  {personalFavorites.map((fav) => (
+                    <div
+                      key={fav.id}
+                      onClick={() => {
+                        setEditorText(fav.content);
+                        setScriptTitle(fav.title);
+                        setSceneTitle(fav.sceneTitle);
+                      }}
+                      className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl cursor-pointer border border-slate-100 flex justify-between items-center transition-all group"
+                    >
+                      <div className="max-w-[50%]">
+                        <span className="text-xs font-bold text-slate-800 block truncate leading-snug">
+                          {fav.title}
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono leading-none">
+                          {fav.sceneTitle}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 transition-opacity shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditorText(fav.content);
+                            setScriptTitle(fav.title);
+                            setSceneTitle(fav.sceneTitle);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-colors cursor-pointer"
+                          title="Mở biên tập kịch bản này"
+                        >
+                          Mở
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pushToPlaylist(fav);
+                          }}
+                          className="p-1 bg-white text-indigo-600 rounded-lg shadow-sm border border-slate-200 hover:bg-indigo-50 cursor-pointer"
+                          title="Thêm vào Playlist"
+                        >
+                          <PlusCircle size={11} />
+                        </button>
+                        <button
+                          onClick={(e) => removeFavoriteTrack(fav.id, e)}
+                          className="p-1 bg-white text-rose-500 rounded-lg shadow-sm border border-slate-200 hover:bg-rose-50 cursor-pointer"
+                          title="Xóa bỏ"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Script Selector helper from main library */}
+            <div className="bg-[#1A1B2E] text-white rounded-3xl p-5 border border-[#2D2E45] shadow-lg space-y-4">
+              <span className="text-xs font-bold text-[#00F2EA] flex items-center gap-1 block">
+                <Sparkles size={12} />
+                <span>Nạp nhanh từ Kho Nội Dung</span>
+              </span>
+
+              {/* Check for shared dialogue from clipboard action */}
+              {(() => {
+                const sharedDial = typeof window !== "undefined" ? localStorage.getItem("clipflow_studio_shared_dialogue") : null;
+                if (sharedDial) {
+                  return (
+                    <div className="p-3 bg-[#FF3B5C]/10 border border-[#FF3B5C]/30 rounded-2xl space-y-2">
+                      <span className="text-[10px] text-[#FF3B5C] font-extrabold block">✨ CÓ LỜI THOẠI ĐANG CHỜ LỒNG TIẾNG</span>
+                      <p className="text-[10px] text-slate-300 line-clamp-2 italic">"{sharedDial}"</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setScriptTitle("Lời thoại lồng tiếng");
+                          setEditorText(sharedDial);
+                          setSceneTitle("Bản lồng tiếng");
+                          
+                          // Create a temporary track
+                          const customTrack = {
+                            id: `track-shared-${Date.now()}`,
+                            scriptId: "custom_script",
+                            title: "Thoại tự do chuyển từ Kho",
+                            sceneTitle: "Phân cảnh chính",
+                            content: sharedDial,
+                            duration: Math.ceil(sharedDial.split(/\s+/).length * 0.4),
+                            tags: ["Lời thoại", "Đồng sáng tác"]
+                          };
+                          savePlaylist([...playlist, customTrack]);
+                          localStorage.removeItem("clipflow_studio_shared_dialogue");
+                          showFeedback("Đã nạp thành công lời thoại vào trình biên tập lồng tiếng!");
+                        }}
+                        className="w-full py-1.5 bg-[#FF3B5C] hover:bg-[#FF3B5C]/90 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1"
+                      >
+                        <span>📥</span>
+                        <span>Nạp ngay vào Trình lồng tiếng</span>
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              <div className="space-y-3">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">🎬 Kịch bản video ({savedScripts.length})</span>
+                  {savedScripts.length === 0 ? (
+                    <div className="text-[10px] text-slate-500 py-1">Trống</div>
+                  ) : (
+                    <div className="space-y-1 max-h-28 overflow-y-auto scrollbar-thin">
+                      {savedScripts.slice(0, 4).map(script => (
+                        <button
+                          key={script.id}
+                          onClick={() => {
+                            setScriptTitle(script.title);
+                            const tracksToImport = script.scenes.map((scene, idx) => ({
+                              id: `${script.id}-scene-${scene.id}-${Date.now()}`,
+                              scriptId: script.id,
+                              title: script.title,
+                              sceneTitle: `Phân cảnh ${idx + 1} (${scene.timeRange})`,
+                              content: scene.dialogue,
+                              duration: Math.ceil(script.duration / script.scenes.length),
+                              tags: [script.style, script.tone]
+                            }));
+                            savePlaylist([...playlist, ...tracksToImport]);
+                            setEditorText(script.scenes[0]?.dialogue || "");
+                            setSceneTitle(`Phân cảnh 1 (${script.scenes[0]?.timeRange || "00:00"})`);
+                            showFeedback(`Đã nạp thành công kịch bản "${script.title}" vào playlist!`);
+                          }}
+                          className="w-full text-left p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[11px] flex justify-between items-center transition-all group animate-fade-in"
+                        >
+                          <span className="truncate max-w-[70%] text-slate-200 group-hover:text-white font-medium">
+                            {script.title}
+                          </span>
+                          <span className="text-[9px] bg-[#00F2EA]/20 text-[#00F2EA] px-1 py-0.2 rounded font-mono shrink-0">
+                            {script.scenes.length} phân cảnh
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-1.5 border-t border-slate-800">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">✍️ Lời thoại đồng sáng tác ({savedDialogues.length})</span>
+                  {savedDialogues.length === 0 ? (
+                    <div className="text-[10px] text-slate-500 py-1">Trống</div>
+                  ) : (
+                    <div className="space-y-1 max-h-28 overflow-y-auto scrollbar-thin">
+                      {savedDialogues.slice(0, 4).map(dial => (
+                        <button
+                          key={dial.id}
+                          onClick={() => {
+                            setScriptTitle(dial.title);
+                            setEditorText(dial.content);
+                            setSceneTitle("Lời thoại");
+                            const customTrack = {
+                              id: `dial-${dial.id}-${Date.now()}`,
+                              scriptId: dial.id,
+                              title: dial.title,
+                              sceneTitle: "Thoại chính",
+                              content: dial.content,
+                              duration: dial.duration || 60,
+                              tags: [dial.style, dial.tone]
+                            };
+                            savePlaylist([...playlist, customTrack]);
+                            showFeedback(`Đã nạp thành công lời thoại "${dial.title}" vào playlist!`);
+                          }}
+                          className="w-full text-left p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[11px] flex justify-between items-center transition-all group animate-fade-in"
+                        >
+                          <span className="truncate max-w-[80%] text-slate-200 group-hover:text-white font-medium">
+                            {dial.title}
+                          </span>
+                          <span className="text-[8px] bg-[#00F2EA]/20 text-[#00F2EA] px-1 py-0.2 rounded font-mono shrink-0">
+                            {dial.duration}s
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
         ) : (
-          /* Independent Text & PDF Station */
+          <>
+          {/* Independent Text to Speech Station */}
           <div className="lg:col-span-8 space-y-6">
             <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
                 <div className="space-y-1">
                   <h2 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#00F2EA] animate-ping" />
-                    <span>Lồng Tiếng Văn Bản & PDF Tự Do</span>
+                    <span>Chuyển Văn Bản Thành Âm Thanh</span>
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Chuyển đổi tài liệu, sách, báo hoặc văn bản dài thành giọng nói AI chất lượng cao không giới hạn.
+                    Chuyển đổi văn bản tùy ý thành giọng đọc AI chất lượng cao không giới hạn.
                   </p>
                 </div>
               </div>
@@ -3149,38 +3633,6 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                 </div>
               )}
 
-              {/* PDF upload and Drag-and-Drop area */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                <div className="md:col-span-12">
-                  <label className="group relative flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 hover:border-[#00F2EA] bg-slate-50/50 hover:bg-slate-50 rounded-2xl transition-all cursor-pointer overflow-hidden">
-                    <input
-                      type="file"
-                      accept="application/pdf"
-                      onChange={handleIndependentPdfUpload}
-                      disabled={pdfParsing}
-                      className="hidden"
-                    />
-                    
-                    {pdfParsing ? (
-                      <div className="flex flex-col items-center gap-2.5 py-2">
-                        <Loader2 className="w-8 h-8 text-[#00F2EA] animate-spin" />
-                        <span className="text-xs font-bold text-slate-600 animate-pulse">Đang giải mã và trích xuất nội dung văn bản từ tệp tin PDF...</span>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 text-center">
-                        <span className="p-3 bg-white group-hover:bg-[#00F2EA]/10 text-slate-400 group-hover:text-[#00F2EA] rounded-xl shadow-sm border border-slate-100 transition-all">
-                          <Upload size={20} />
-                        </span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-700">Tải tệp PDF lên để đọc tự động</p>
-                          <p className="text-[10px] text-slate-400 mt-1">Hỗ trợ trích xuất văn bản từ sách, tài liệu, báo cáo định dạng PDF</p>
-                        </div>
-                      </div>
-                    )}
-                  </label>
-                </div>
-              </div>
-
               {/* Large independent text editor */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -3190,7 +3642,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                   {independentText && (
                     <button
                       onClick={() => setIndependentText("")}
-                      className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition"
+                      className="text-[10px] font-semibold text-rose-500 hover:text-rose-600 transition cursor-pointer"
                     >
                       Xóa toàn bộ
                     </button>
@@ -3201,7 +3653,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                   <textarea
                     value={independentText}
                     onChange={(e) => setIndependentText(e.target.value)}
-                    placeholder="Nhập hoặc dán nội dung văn bản tiếng Việt của bạn vào đây, hoặc kéo thả tệp PDF vào khung phía trên..."
+                    placeholder="Nhập hoặc dán nội dung văn bản tiếng Việt của bạn vào đây để chuyển đổi sang giọng đọc AI..."
                     rows={12}
                     className="w-full bg-slate-50/50 focus:bg-white text-slate-800 text-sm p-4 rounded-2xl border border-slate-200 outline-none focus:ring-2 focus:ring-[#00F2EA]/30 focus:border-[#00F2EA] transition-all resize-y font-normal leading-relaxed placeholder:text-slate-400"
                   />
@@ -3507,301 +3959,166 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
               </div>
             </div>
           </div>
-        )}
 
-        {/* Right Side: Playlist Area & Personal favorites list */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Playlist Core Area */}
-          <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
-            <div className="flex justify-between items-center border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 bg-gradient-to-tr from-[#FF3B5C] to-red-600 text-white rounded-lg">
-                  <Radio size={14} className="animate-pulse" />
-                </span>
-                <div>
-                  <h3 className="font-bold text-sm tracking-tight text-white mb-0.5">Playlist Studio</h3>
-                  <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Danh sách phát âm thanh</span>
+          {/* Right Side for Text-to-Speech: Quick Text Templates, Saved Text Dialogues & AI Voice Tips */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Quick Text Templates */}
+            <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-gradient-to-tr from-[#00F2EA] to-cyan-600 text-slate-950 rounded-lg font-black">
+                    <Sparkles size={14} />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-sm tracking-tight text-white mb-0.5">Văn Bản Mẫu Nhanh</h3>
+                    <span className="text-[9px] font-mono text-cyan-400 uppercase tracking-widest block font-bold">1 chạm để nạp & thử giọng</span>
+                  </div>
                 </div>
               </div>
-              
-              {playlist.length > 0 && (
-                <button
-                  onClick={clearPlaylist}
-                  className="p-1 text-[10px] text-zinc-400 hover:text-white transition-colors"
-                  title="Dọn dẹp"
-                >
-                  Dọn dẹp
-                </button>
-              )}
-            </div>
 
-            {playlist.length === 0 ? (
-              <div className="py-8 text-center space-y-2">
-                <Music size={28} className="mx-auto text-slate-700 animate-bounce" />
-                <p className="text-xs text-slate-500 leading-relaxed px-4">
-                  Chưa có phân cảnh nào trong danh sách phát. Chọn kịch bản từ Kho dưới đây để dán vào!
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-thin">
-                {playlist.map((track, idx) => {
-                  const isActive = idx === activeTrackIndex;
-                  return (
-                    <div
-                      key={track.id}
-                      onClick={() => setActiveTrackIndex(idx)}
-                      className={`p-3 rounded-2xl cursor-pointer border transition-all relative group flex justify-between items-center ${
-                        isActive
-                          ? "bg-slate-800 border-indigo-500/50 shadow-lg shadow-indigo-500/5"
-                          : "bg-slate-800/30 hover:bg-slate-800/50 border-slate-800 hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="space-y-1 max-w-[80%]">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-[10px] font-black text-[#00F2EA] tracking-wide truncate max-w-[120px]">
-                            {track.title}
-                          </span>
-                          <span className="text-[9px] text-slate-500">•</span>
-                          <span className="text-[9px] text-slate-400 font-medium font-mono truncate">
-                            {track.sceneTitle}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-300 line-clamp-1 leading-snug">
-                          {track.content}
-                        </p>
-                        <div className="flex items-center gap-1 mt-1">
-                          <Clock size={8} className="text-slate-500" />
-                          <span className="text-[8px] font-mono text-slate-500">Dự kiến ~{track.duration}s</span>
-                          {track.tags.map((tag, tIdx) => (
-                            <span key={tIdx} className="text-[7px] font-bold px-1.5 py-0.2 bg-white/5 rounded text-[#FF3B5C]">
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={(e) => deletePlaylistTrack(idx, e)}
-                        className="p-1.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/30 hover:border-rose-500 text-rose-400 hover:text-rose-200 transition-all rounded-lg cursor-pointer"
-                        title="Xóa phân cảnh"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-3 text-center space-y-1 hover:bg-slate-800/60 transition-all">
-              <span className="text-[9px] font-mono text-slate-400 block uppercase font-bold tracking-wider">
-                Gợi ý sắp xếp chuỗi logic
-              </span>
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                Nên xếp xen kẽ [Lời dẫn] - [Hội thoại gay cấn] - [CTA bán hàng] để giữ chân độc thính Podcast tốt nhất.
-              </p>
-            </div>
-          </div>
-
-          {/* Personalized Favorites area */}
-          <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
-            <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <BookOpen size={16} className="text-cyan-500" />
-              <span>Thư viện cá nhân hóa ({personalFavorites.length})</span>
-            </span>
-
-            {personalFavorites.length === 0 ? (
-              <div className="py-4 text-center text-xs text-slate-400">
-                Chưa lưu kịch bản cá nhân nào. Bấm nút "Lưu vào khu vực cá nhân hóa" khi biên tập xong để lưu trữ nhanh.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin">
-                {personalFavorites.map((fav) => (
+              <div className="space-y-2.5">
+                {[
+                  {
+                    title: "Review Tai Nghe Chống Ồn",
+                    tag: "Công nghệ",
+                    color: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+                    text: "Chào mừng các bạn đã quay trở lại với kênh công nghệ. Hôm nay, chúng ta cùng trải nghiệm mẫu tai nghe chống ồn thế hệ mới, mang đến không gian âm nhạc tĩnh lặng tuyệt đối và chất âm chi tiết bất ngờ."
+                  },
+                  {
+                    title: "Bản Tin Thời Sự & Kinh Tế",
+                    tag: "Bản tin",
+                    color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+                    text: "Thưa quý vị và các bạn, thị trường số hôm nay tiếp tục ghi nhận sự tăng trưởng mạnh mẽ của các ứng dụng trí tuệ nhân tạo, mở ra giải pháp tự động hóa đột phá cho các doanh nghiệp."
+                  },
+                  {
+                    title: "Podcast Truyền Cảm Hứng",
+                    tag: "Podcast",
+                    color: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+                    text: "Mỗi bước đi dù nhỏ bé của bạn hôm nay đều là nền tảng vững chắc cho thành công mai sau. Đừng ngại ngần bước ra khỏi vùng an toàn, bởi chính thử thách mới tôi luyện nên bản lĩnh."
+                  },
+                  {
+                    title: "Lời Chào Mừng & Giới Thiệu",
+                    tag: "Thông báo",
+                    color: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+                    text: "Kính chào quý khách hàng, cảm ơn quý khách đã tin tưởng lựa chọn dịch vụ của chúng tôi. Mọi yêu cầu tư vấn và chăm sóc khách hàng luôn sẵn sàng hỗ trợ bạn 24/7."
+                  },
+                  {
+                    title: "Tóm Tắt Sách & Kỹ Năng",
+                    tag: "Sách nói",
+                    color: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+                    text: "Cuốn sách chia sẻ 3 nguyên tắc vàng trong quản lý thời gian: tập trung vào việc quan trọng nhất, thiết lập ranh giới rõ ràng và duy trì năng lượng tích cực mỗi ngày."
+                  }
+                ].map((tpl, tIdx) => (
                   <div
-                    key={fav.id}
+                    key={tIdx}
                     onClick={() => {
-                      setEditorText(fav.content);
-                      setScriptTitle(fav.title);
-                      setSceneTitle(fav.sceneTitle);
+                      setIndependentText(tpl.text);
+                      showFeedback(`Đã nạp văn bản mẫu: "${tpl.title}"`);
                     }}
-                    className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-xl cursor-pointer border border-slate-100 flex justify-between items-center transition-all group"
+                    className="p-3 bg-slate-800/40 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/40 rounded-2xl cursor-pointer transition-all group"
                   >
-                    <div className="max-w-[50%]">
-                      <span className="text-xs font-bold text-slate-800 block truncate leading-snug">
-                        {fav.title}
-                      </span>
-                      <span className="text-[9px] text-slate-500 font-mono leading-none">
-                        {fav.sceneTitle}
+                    <div className="flex justify-between items-center mb-1">
+                      <h4 className="text-xs font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">
+                        {tpl.title}
+                      </h4>
+                      <span className={`text-[8px] font-bold px-2 py-0.5 rounded-full border ${tpl.color}`}>
+                        {tpl.tag}
                       </span>
                     </div>
-
-                    <div className="flex items-center gap-1.5 transition-opacity shrink-0">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditorText(fav.content);
-                          setScriptTitle(fav.title);
-                          setSceneTitle(fav.sceneTitle);
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-colors cursor-pointer"
-                        title="Mở biên tập kịch bản này"
-                      >
-                        Mở
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          pushToPlaylist(fav);
-                        }}
-                        className="p-1 bg-white text-indigo-600 rounded-lg shadow-sm border border-slate-200 hover:bg-indigo-50 cursor-pointer"
-                        title="Thêm vào Playlist"
-                      >
-                        <PlusCircle size={11} />
-                      </button>
-                      <button
-                        onClick={(e) => removeFavoriteTrack(fav.id, e)}
-                        className="p-1 bg-white text-rose-500 rounded-lg shadow-sm border border-slate-200 hover:bg-rose-50 cursor-pointer"
-                        title="Xóa bỏ"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
+                    <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed font-normal">
+                      {tpl.text}
+                    </p>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Quick Script Selector helper from main library */}
-          <div className="bg-[#1A1B2E] text-white rounded-3xl p-5 border border-[#2D2E45] shadow-lg space-y-4">
-            <span className="text-xs font-bold text-[#00F2EA] flex items-center gap-1 block">
-              <Sparkles size={12} />
-              <span>Nạp nhanh từ Kho Nội Dung</span>
-            </span>
-
-            {/* Check for shared dialogue from clipboard action */}
-            {(() => {
-              const sharedDial = typeof window !== "undefined" ? localStorage.getItem("clipflow_studio_shared_dialogue") : null;
-              if (sharedDial) {
-                return (
-                  <div className="p-3 bg-[#FF3B5C]/10 border border-[#FF3B5C]/30 rounded-2xl space-y-2">
-                    <span className="text-[10px] text-[#FF3B5C] font-extrabold block">✨ CÓ LỜI THOẠI ĐANG CHỜ LỒNG TIẾNG</span>
-                    <p className="text-[10px] text-slate-300 line-clamp-2 italic">"{sharedDial}"</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setScriptTitle("Lời thoại lồng tiếng");
-                        setEditorText(sharedDial);
-                        setSceneTitle("Bản lồng tiếng");
-                        
-                        // Create a temporary track
-                        const customTrack = {
-                          id: `track-shared-${Date.now()}`,
-                          scriptId: "custom_script",
-                          title: "Thoại tự do chuyển từ Kho",
-                          sceneTitle: "Phân cảnh chính",
-                          content: sharedDial,
-                          duration: Math.ceil(sharedDial.split(/\s+/).length * 0.4),
-                          tags: ["Lời thoại", "Đồng sáng tác"]
-                        };
-                        savePlaylist([...playlist, customTrack]);
-                        localStorage.removeItem("clipflow_studio_shared_dialogue");
-                        showFeedback("Đã nạp thành công lời thoại vào trình biên tập lồng tiếng!");
-                      }}
-                      className="w-full py-1.5 bg-[#FF3B5C] hover:bg-[#FF3B5C]/90 text-white text-[10px] font-bold rounded-lg transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1"
-                    >
-                      <span>📥</span>
-                      <span>Nạp ngay vào Trình lồng tiếng</span>
-                    </button>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            <div className="space-y-3">
-              <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">🎬 Kịch bản video ({savedScripts.length})</span>
-                {savedScripts.length === 0 ? (
-                  <div className="text-[10px] text-slate-500 py-1">Trống</div>
-                ) : (
-                  <div className="space-y-1 max-h-28 overflow-y-auto scrollbar-thin">
-                    {savedScripts.slice(0, 4).map(script => (
-                      <button
-                        key={script.id}
-                        onClick={() => {
-                          setScriptTitle(script.title);
-                          const tracksToImport = script.scenes.map((scene, idx) => ({
-                            id: `${script.id}-scene-${scene.id}-${Date.now()}`,
-                            scriptId: script.id,
-                            title: script.title,
-                            sceneTitle: `Phân cảnh ${idx + 1} (${scene.timeRange})`,
-                            content: scene.dialogue,
-                            duration: Math.ceil(script.duration / script.scenes.length),
-                            tags: [script.style, script.tone]
-                          }));
-                          savePlaylist([...playlist, ...tracksToImport]);
-                          setEditorText(script.scenes[0]?.dialogue || "");
-                          setSceneTitle(`Phân cảnh 1 (${script.scenes[0]?.timeRange || "00:00"})`);
-                          showFeedback(`Đã nạp thành công kịch bản "${script.title}" vào playlist!`);
-                        }}
-                        className="w-full text-left p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[11px] flex justify-between items-center transition-all group animate-fade-in"
-                      >
-                        <span className="truncate max-w-[70%] text-slate-200 group-hover:text-white font-medium">
-                          {script.title}
-                        </span>
-                        <span className="text-[9px] bg-[#00F2EA]/20 text-[#00F2EA] px-1 py-0.2 rounded font-mono shrink-0">
-                          {script.scenes.length} phân cảnh
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+            {/* Saved Dialogues / Prompt Library */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                  <BookOpen size={16} className="text-cyan-600" />
+                  <span>Kho Lời Thoại Đã Lưu ({savedDialogues.length})</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Máy nhắc chữ</span>
               </div>
 
-              <div className="pt-1.5 border-t border-slate-800">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">✍️ Lời thoại đồng sáng tác ({savedDialogues.length})</span>
-                {savedDialogues.length === 0 ? (
-                  <div className="text-[10px] text-slate-500 py-1">Trống</div>
-                ) : (
-                  <div className="space-y-1 max-h-28 overflow-y-auto scrollbar-thin">
-                    {savedDialogues.slice(0, 4).map(dial => (
-                      <button
-                        key={dial.id}
-                        onClick={() => {
-                          setScriptTitle(dial.title);
-                          setEditorText(dial.content);
-                          setSceneTitle("Lời thoại");
-                          const customTrack = {
-                            id: `dial-${dial.id}-${Date.now()}`,
-                            scriptId: dial.id,
-                            title: dial.title,
-                            sceneTitle: "Thoại chính",
-                            content: dial.content,
-                            duration: dial.duration || 60,
-                            tags: [dial.style, dial.tone]
-                          };
-                          savePlaylist([...playlist, customTrack]);
-                          showFeedback(`Đã nạp thành công lời thoại "${dial.title}" vào playlist!`);
-                        }}
-                        className="w-full text-left p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-[11px] flex justify-between items-center transition-all group animate-fade-in"
-                      >
-                        <span className="truncate max-w-[80%] text-slate-200 group-hover:text-white font-medium">
+              {savedDialogues.length === 0 ? (
+                <div className="py-6 text-center space-y-1">
+                  <p className="text-xs text-slate-400">
+                    Chưa có lời thoại nào được lưu.
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Nhập văn bản và bấm <strong>"Lưu vào Kho lời thoại"</strong> để lưu trữ nhanh.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto scrollbar-thin">
+                  {savedDialogues.map((dial) => (
+                    <div
+                      key={dial.id}
+                      onClick={() => {
+                        setIndependentText(dial.content);
+                        showFeedback(`Đã nạp lời thoại "${dial.title}" vào trình chuyển văn bản!`);
+                      }}
+                      className="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl cursor-pointer border border-slate-100 flex justify-between items-center transition-all group"
+                    >
+                      <div className="max-w-[70%]">
+                        <span className="text-xs font-bold text-slate-800 block truncate leading-snug group-hover:text-cyan-600 transition-colors">
                           {dial.title}
                         </span>
-                        <span className="text-[8px] bg-[#00F2EA]/20 text-[#00F2EA] px-1 py-0.2 rounded font-mono shrink-0">
-                          {dial.duration}s
+                        <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">
+                          {dial.content}
+                        </p>
+                        <span className="text-[8px] text-slate-400 font-mono mt-1 block">
+                          ~{dial.content.length} ký tự
                         </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIndependentText(dial.content);
+                          showFeedback(`Đã nạp lời thoại "${dial.title}" vào trình chuyển văn bản!`);
+                        }}
+                        className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-colors cursor-pointer"
+                        title="Nạp vào ô chuyển văn bản"
+                      >
+                        Nạp
                       </button>
-                    ))}
-                  </div>
-                )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* AI Voice Best Practices & Guide */}
+            <div className="bg-gradient-to-br from-slate-900 to-cyan-950 text-white rounded-3xl p-5 border border-cyan-500/20 shadow-lg space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="p-1 bg-cyan-500/20 text-[#00F2EA] rounded-lg">
+                  <Check size={14} />
+                </span>
+                <h4 className="font-extrabold text-xs text-white">Mẹo Để Giọng Đọc AI Tự Nhiên Nhất</h4>
               </div>
+              <ul className="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+                <li className="flex items-start gap-1.5">
+                  <span className="text-cyan-400 font-bold">•</span>
+                  <span><strong>Dấu câu rõ ràng:</strong> Dùng dấu phẩy <code>,</code> và dấu chấm <code>.</code> để tạo khoảng nghỉ nhịp nhàng chuẩn MC.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-cyan-400 font-bold">•</span>
+                  <span><strong>Tốc độ đọc:</strong> Tốc độ <code>1.0x - 1.1x</code> phù hợp cho tin tức/review, còn <code>0.9x - 0.95x</code> lý tưởng cho podcast/truyện.</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="text-cyan-400 font-bold">•</span>
+                  <span><strong>Vùng miền:</strong> Giọng Bắc thanh lịch cho tin tức, giọng Nam ấm áp cho bán hàng/vlog, giọng Trung cuốn hút cho phóng sự.</span>
+                </li>
+              </ul>
             </div>
           </div>
-
-        </div>
+        </>
+      )}
 
       </div>
 
