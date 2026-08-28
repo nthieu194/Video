@@ -328,6 +328,7 @@ export default function AudioStudio({
   const [segmentRecorder, setSegmentRecorder] = useState<MediaRecorder | null>(null);
   const [generatingSegmentIdx, setGeneratingSegmentIdx] = useState<number | null>(null);
   const [isGeneratingAll, setIsGeneratingAll] = useState<boolean>(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [savingSegmentIdx, setSavingSegmentIdx] = useState<number | null>(null);
   const [loadingCloudAudios, setLoadingCloudAudios] = useState<boolean>(false);
 
@@ -901,20 +902,23 @@ export default function AudioStudio({
   const generateAIVoicesForAll = async () => {
     if (textSegments.length === 0) return;
     setIsGeneratingAll(true);
-    showFeedback("Đang khởi tạo lồng tiếng hàng loạt bằng Giọng nhân bản AI thực tế cho toàn bộ kịch bản...");
+    setBatchProgress({ current: 0, total: textSegments.length });
+    showFeedback(`Đang khởi tạo lồng tiếng AI đồng loạt cho ${textSegments.length} câu thoại kịch bản...`);
     
     try {
       for (let i = 0; i < textSegments.length; i++) {
+        setBatchProgress({ current: i + 1, total: textSegments.length });
         await generateAIVoiceForSegment(i);
         // Wait 150ms to avoid burst limits
         await new Promise(resolve => setTimeout(resolve, 150));
       }
-      showFeedback("Hoàn thành! Toàn bộ kịch bản đã được chuyển đổi sang giọng đọc AI thực tế chất lượng cao!");
+      showFeedback("Hoàn tất lồng tiếng đồng loạt! Kết quả từng câu thoại đã sẵn sàng bên dưới, bạn có thể bấm 'Phát toàn bộ kịch bản' để thưởng thức!");
     } catch (err: any) {
       console.error(err);
       showFeedback(`Lỗi trong quá trình lồng tiếng hàng loạt: ${err.message}`);
     } finally {
       setIsGeneratingAll(false);
+      setBatchProgress(null);
     }
   };
 
@@ -2433,27 +2437,104 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Radio className="text-cyan-500 animate-pulse" size={18} />
-                  <span className="font-extrabold text-slate-900 text-sm">Phòng Thu Âm & Lồng Tiếng AI Premium</span>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-sm block">Phòng Thu Âm & Lồng Tiếng AI Premium</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Tạo và phát trực tiếp giọng đọc AI chất lượng cao cho từng phân đoạn kịch bản</span>
+                  </div>
                 </div>
                 
-                <button
-                  type="button"
-                  onClick={generateAIVoicesForAll}
-                  disabled={isGeneratingAll}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-slate-950 font-bold text-[11px] rounded-xl shadow-md transition-all shrink-0 disabled:opacity-50"
-                >
-                  {isGeneratingAll ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  <span>{isGeneratingAll ? "Đang xử lý hàng loạt..." : "Lồng tiếng AI Premium hàng loạt"}</span>
-                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={generateAIVoicesForAll}
+                    disabled={isGeneratingAll || textSegments.length === 0}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-slate-950 font-black text-xs rounded-xl shadow-md hover:shadow-cyan-500/25 transition-all shrink-0 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isGeneratingAll ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-slate-950" />
+                    )}
+                    <span>{isGeneratingAll ? "Đang lồng tiếng..." : "Lồng tiếng AI Premium đồng loạt"}</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Real-time batch progress indicator */}
+              {isGeneratingAll && batchProgress && (
+                <div className="p-4 bg-gradient-to-r from-cyan-950 via-slate-900 to-indigo-950 text-white rounded-2xl border border-cyan-500/40 shadow-lg space-y-2.5 animate-pulse">
+                  <div className="flex justify-between items-center text-xs">
+                    <div className="flex items-center gap-2 font-bold text-cyan-300">
+                      <Loader2 size={14} className="animate-spin text-cyan-400" />
+                      <span>Đang tiến hành lồng tiếng AI đồng loạt: Câu {batchProgress.current} / {batchProgress.total}</span>
+                    </div>
+                    <span className="font-mono text-xs font-black text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-500/30">
+                      {Math.round((batchProgress.current / (batchProgress.total || 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-white/10 h-2.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-cyan-400 to-indigo-400 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${Math.round((batchProgress.current / (batchProgress.total || 1)) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-300 italic">
+                    Hệ thống đang gọi AI Gemini để tổng hợp giọng đọc phát thanh viên cho từng phân đoạn thoại...
+                  </p>
+                </div>
+              )}
+
+              {/* Master Control & Playback Bar for the Entire Script */}
+              {Object.keys(customSegmentAudios).length > 0 && (
+                <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-cyan-950 text-white rounded-2xl border border-cyan-500/30 shadow-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="p-1.5 bg-gradient-to-tr from-cyan-500 to-emerald-500 rounded-lg text-slate-950 font-black">
+                        <Check size={14} />
+                      </span>
+                      <div>
+                        <h4 className="font-extrabold text-xs text-white flex items-center gap-2">
+                          <span>KẾT QUẢ LỒNG TIẾNG ĐỒNG LOẠT HOÀN TẤT</span>
+                          <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                            {Object.keys(customSegmentAudios).length}/{textSegments.length} câu đã có Audio
+                          </span>
+                        </h4>
+                        <p className="text-[10px] text-slate-400">
+                          Âm thanh AI của toàn bộ các câu thoại đã sẵn sàng. Bạn có thể phát tuần tự toàn bộ kịch bản hoặc nghe/tải từng câu ở danh sách bên dưới.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={isSpeaking ? stopPlaying : playScript}
+                        className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer shadow-md ${
+                          isSpeaking 
+                            ? "bg-amber-500 hover:bg-amber-600 text-slate-950 border border-amber-400 animate-pulse" 
+                            : "bg-gradient-to-r from-[#00F2EA] to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-slate-950"
+                        }`}
+                      >
+                        {isSpeaking ? (
+                          <>
+                            <Square size={13} className="fill-current" />
+                            <span>Dừng phát</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play size={13} className="fill-current" />
+                            <span>Phát toàn bộ kịch bản (Ghép chuỗi)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 flex flex-wrap justify-between items-center gap-2 text-xs">
                 <span className="text-slate-600 leading-relaxed max-w-md">
-                  Áp dụng <strong>giọng đọc nâng cao 3 miền</strong> hoặc tự sản xuất âm thanh chất lượng phòng thu cho từng phân đoạn thoại. Khi phát kịch bản, hệ thống sẽ sử dụng giọng lồng tiếng thực tế này.
+                  Áp dụng <strong>giọng đọc nâng cao 3 miền</strong> hoặc tự sản xuất âm thanh chất lượng phòng thu cho từng phân đoạn thoại. Khi phát kịch bản, hệ thống sẽ tự động phát các tệp âm thanh AI này.
                 </span>
                 <span className="text-[10px] bg-cyan-100 text-cyan-800 font-mono font-bold px-2.5 py-1 rounded-full border border-cyan-200">
                   {Object.keys(customSegmentAudios).length} / {textSegments.length} câu đã có giọng thực tế
@@ -2668,9 +2749,9 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                         {seg.text}
                       </p>
 
-                      {/* Recording & Upload controls per segment */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-2.5 bg-slate-100/50 p-2.5 rounded-xl">
-                        <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Audio action controls per segment */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100 pt-2.5 bg-slate-100/50 p-2.5 rounded-xl">
+                        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
                           {customAudio ? (
                             <>
                               <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 rounded-lg">
@@ -2679,85 +2760,54 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                 </span>
                                 <span className="text-[10px] font-bold">
-                                  Đã sẵn sàng (Giọng lồng tiếng)
+                                  Đã có giọng AI
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => deleteSegmentAudio(sIdx)}
                                   className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
-                                  title="Xóa giọng đọc thực tế"
+                                  title="Xóa âm thanh này để lồng tiếng lại"
                                 >
                                   <Trash2 size={11} />
                                 </button>
                               </div>
 
+                              {/* Native Audio Preview Controller */}
+                              <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-2.5 py-1 rounded-lg shadow-xs">
+                                <audio
+                                  controls
+                                  src={customAudio}
+                                  className="h-6 max-w-[200px] text-xs focus:outline-none"
+                                  preload="metadata"
+                                />
+                              </div>
+
                               <button
                                 type="button"
                                 onClick={() => downloadSegmentAudio(sIdx)}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
-                                title="Tải âm thanh phân đoạn này về máy"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
+                                title="Tải tệp âm thanh này về máy"
                               >
-                                <Download size={10} />
-                                <span>Tải về</span>
+                                <Download size={11} />
+                                <span>Tải MP3</span>
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => saveSegmentToCloud(sIdx)}
                                 disabled={savingSegmentIdx === sIdx}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
-                                title="Lưu trữ phân đoạn này"
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-[10px] font-black rounded-lg shadow-sm transition-all hover:-translate-y-0.5 cursor-pointer"
+                                title="Lưu trữ phân đoạn này lên thư viện cá nhân"
                               >
-                                <Cloud size={10} className={savingSegmentIdx === sIdx ? "animate-pulse" : ""} />
-                                <span>{savingSegmentIdx === sIdx ? "Đang lưu..." : "Lưu"}</span>
+                                <Cloud size={11} className={savingSegmentIdx === sIdx ? "animate-pulse" : ""} />
+                                <span>{savingSegmentIdx === sIdx ? "Đang lưu..." : "Lưu Cloud"}</span>
                               </button>
                             </>
                           ) : (
                             <span className="text-[10px] text-slate-400 italic">
-                              Chưa ghi âm/lồng tiếng AI cho đoạn này
+                              Chưa lồng tiếng AI cho câu thoại này
                             </span>
                           )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          {/* Recording buttons */}
-                          {segmentRecordingIdx === sIdx && segmentRecordingState === "recording" ? (
-                            <button
-                              type="button"
-                              onClick={stopSegmentRecording}
-                              className="px-2.5 py-1 bg-red-500 text-white text-[10px] font-black rounded-lg animate-pulse flex items-center gap-1"
-                            >
-                              <MicOff size={10} />
-                              <span>Dừng ghi</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => startSegmentRecording(sIdx)}
-                              disabled={segmentRecordingIdx !== null}
-                              className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all disabled:opacity-50"
-                            >
-                              <Mic size={10} className="text-cyan-500" />
-                              <span>Tự ghi âm giọng bạn</span>
-                            </button>
-                          )}
-
-                          {/* File upload selector */}
-                          <label className="cursor-pointer">
-                            <input
-                              type="file"
-                              accept="audio/*"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleSegmentAudioUpload(sIdx, file);
-                              }}
-                              className="hidden"
-                            />
-                            <span className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-lg flex items-center gap-1 transition-all">
-                              <Upload size={10} className="text-slate-400" />
-                              <span>Tải tệp đọc lên</span>
-                            </span>
-                          </label>
                         </div>
                       </div>
                     </div>

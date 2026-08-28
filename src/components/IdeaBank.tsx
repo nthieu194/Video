@@ -93,23 +93,27 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
     loadFieldsAndIdeas(selectedIndustryId);
   }, [selectedIndustryId]);
 
+  const CORE_FIELD_IDS = ["boicanh", "nhanvat", "hanhdong", "ketqua"];
+
   const sanitizeFieldsList = (fieldsList: IdeaField[]): IdeaField[] => {
-    return fieldsList.map(f => {
-      const rawOptions = f.options || [];
-      const seen = new Set<string>();
-      const cleanedOptions: string[] = [];
-      for (const opt of rawOptions) {
-        const clean = deepCleanOption(opt);
-        if (clean && !seen.has(clean)) {
-          seen.add(clean);
-          cleanedOptions.push(clean);
+    return fieldsList
+      .filter(f => CORE_FIELD_IDS.includes(f.id))
+      .map(f => {
+        const rawOptions = f.options || [];
+        const seen = new Set<string>();
+        const cleanedOptions: string[] = [];
+        for (const opt of rawOptions) {
+          const clean = deepCleanOption(opt);
+          if (clean && !seen.has(clean)) {
+            seen.add(clean);
+            cleanedOptions.push(clean);
+          }
         }
-      }
-      return {
-        ...f,
-        options: cleanedOptions
-      };
-    });
+        return {
+          ...f,
+          options: cleanedOptions
+        };
+      });
   };
 
   const loadFieldsAndIdeas = async (industryId: string = "bds") => {
@@ -125,50 +129,43 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
       if (!querySnapshot.empty) {
         const fetched: IdeaField[] = [];
         querySnapshot.forEach((docSnap) => {
-          fetched.push(docSnap.data() as IdeaField);
-        });
-        
-        // Check if fetched options contain glued strings (no spaces and > 12 chars)
-        const hasGluedOptions = fetched.some(f => 
-          f.options?.some(o => typeof o === "string" && o.length > 12 && !o.includes(" "))
-        );
-        
-        if (hasGluedOptions) {
-          // Force overwrite with clean default fields
-          currentFields = defaultFields;
-          if (auth.currentUser) {
-            for (const field of defaultFields) {
-              await setDoc(doc(db, collectionName, field.id), field);
+          const data = docSnap.data() as IdeaField;
+          const fieldId = data.id || docSnap.id;
+          if (CORE_FIELD_IDS.includes(fieldId)) {
+            fetched.push({ ...data, id: fieldId });
+          } else {
+            // Permanently purge legacy extra fields (Biến cố, Cảm xúc, CTA, Mục tiêu, Thông điệp...) from Firestore
+            if (auth.currentUser) {
+              deleteDoc(doc(db, collectionName, docSnap.id)).catch(() => {});
             }
           }
-        } else {
-          // Sort according to default sequence
-          currentFields = fetched.sort((a, b) => {
-            const indexA = defaultFields.findIndex(f => f.id === a.id);
-            const indexB = defaultFields.findIndex(f => f.id === b.id);
-            if (indexA === -1) return 1;
-            if (indexB === -1) return -1;
-            return indexA - indexB;
-          });
-
-          // Ensure all default rich options exist in currentFields
-          currentFields = currentFields.map(f => {
-            const defField = defaultFields.find(df => df.id === f.id);
-            if (!defField) return f;
-            const existingOpts = new Set((f.options || []).map(deepCleanOption));
-            const newOpts = [...(f.options || [])];
-            for (const opt of defField.options) {
-              const cleanOpt = deepCleanOption(opt);
-              if (cleanOpt && !existingOpts.has(cleanOpt)) {
-                existingOpts.add(cleanOpt);
-                newOpts.push(cleanOpt);
-              }
+        });
+        
+        // Build 4 core fields ensuring complete 100 options
+        currentFields = defaultFields.map(defField => {
+          const matched = fetched.find(f => f.id === defField.id);
+          if (!matched) return defField;
+          
+          const existingOpts = new Set((matched.options || []).map(deepCleanOption));
+          const newOpts = [...(matched.options || [])];
+          for (const opt of defField.options) {
+            const cleanOpt = deepCleanOption(opt);
+            if (cleanOpt && !existingOpts.has(cleanOpt)) {
+              existingOpts.add(cleanOpt);
+              newOpts.push(cleanOpt);
             }
-            return {
-              ...f,
-              options: newOpts
-            };
-          });
+          }
+          return {
+            ...defField,
+            options: newOpts
+          };
+        });
+
+        // Always sync back the sanitized 4 core fields if logged in
+        if (auth.currentUser) {
+          for (const field of currentFields) {
+            await setDoc(doc(db, collectionName, field.id), field);
+          }
         }
       } else {
         // Seed database if signed in and database is empty
@@ -184,12 +181,15 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
       const local = localStorage.getItem(localKey);
       if (local) {
         try {
-          currentFields = JSON.parse(local);
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed)) {
+            currentFields = parsed.filter((f: any) => CORE_FIELD_IDS.includes(f.id));
+          }
         } catch (_) {}
       }
     }
     
-    // Sanitize currentFields to guarantee zero repetitive prefixes/suffixes and 100% clean unique options
+    // Sanitize currentFields to guarantee strictly 4 core fields and 100% clean unique options
     currentFields = sanitizeFieldsList(currentFields);
     
     setFields(currentFields);
@@ -250,14 +250,15 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
 
   // Sync state helpers
   const saveFieldsToStorage = async (updatedFields: IdeaField[]) => {
-    setFields(updatedFields);
-    localStorage.setItem(`ideabank_fields_${selectedIndustryId}_local`, JSON.stringify(updatedFields));
+    const sanitized = sanitizeFieldsList(updatedFields);
+    setFields(sanitized);
+    localStorage.setItem(`ideabank_fields_${selectedIndustryId}_local`, JSON.stringify(sanitized));
     
     if (auth.currentUser) {
       try {
         const collectionName = selectedIndustryId === "bds" ? "ideabank_fields" : `ideabank_fields_${selectedIndustryId}`;
         // Sync modified ones to Firestore
-        for (const field of updatedFields) {
+        for (const field of sanitized) {
           await setDoc(doc(db, collectionName, field.id), field);
         }
       } catch (err) {
@@ -374,13 +375,9 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
     const randomSelections: Record<string, string> = {};
     fields.forEach(f => {
       if (f.options.length > 0) {
-        // 90% chance to pick a random choice, 10% to select "0 - Nhập thủ công"
-        if (Math.random() > 0.1) {
-          const randIdx = Math.floor(Math.random() * f.options.length);
-          randomSelections[f.id] = f.options[randIdx];
-        } else {
-          randomSelections[f.id] = "0 - Nhập thủ công";
-        }
+        // Pick a random choice
+        const randIdx = Math.floor(Math.random() * f.options.length);
+        randomSelections[f.id] = f.options[randIdx];
       } else {
         randomSelections[f.id] = "0 - Nhập thủ công";
       }
@@ -891,12 +888,17 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
           {activeSubTab === "management" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
-              {/* Left Column: Fields list */}
+              {/* Left Column: 4 Core Fields list */}
               <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-5">
-                <h3 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider border-b border-slate-100 pb-3 flex items-center gap-2">
-                  <FolderPlus size={16} className="text-[#FF3B5C]" />
-                  Quản Lý Các Trường Dữ Liệu
-                </h3>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="font-extrabold text-slate-800 text-sm uppercase tracking-wider flex items-center gap-2">
+                    <FolderPlus size={16} className="text-[#FF3B5C]" />
+                    4 Trường Cấu Trúc Cốt Lõi
+                  </h3>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-[#FF3B5C] border border-rose-100">
+                    Cố định chuẩn
+                  </span>
+                </div>
 
                 <div className="space-y-2">
                   {fields.map(field => (
@@ -907,83 +909,27 @@ export default function IdeaBank({ onUseIdeaForScript, onCheckAuthForAI }: IdeaB
                         setEditingOptionIdx(null);
                         setSearchOptionQuery("");
                       }}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                      className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                         selectedFieldId === field.id 
-                          ? "bg-rose-50 border-rose-200 text-[#FF3B5C]" 
-                          : "bg-slate-50 border-slate-100 hover:bg-slate-100/60 text-slate-700"
+                          ? "bg-rose-50 border-rose-200 text-[#FF3B5C] shadow-xs ring-1 ring-rose-200/50" 
+                          : "bg-slate-50 border-slate-100 hover:bg-slate-100/70 text-slate-700"
                       }`}
                     >
-                      {editingFieldId === field.id ? (
-                        <div className="flex-1 flex items-center gap-2" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="text"
-                            value={editingFieldName}
-                            onChange={e => setEditingFieldName(e.target.value)}
-                            className="flex-1 text-xs px-2.5 py-1 border border-slate-300 rounded-lg bg-white focus:outline-none"
-                          />
-                          <button
-                            onClick={() => handleEditFieldName(field.id)}
-                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                          >
-                            <Check size={14} />
-                          </button>
-                          <button
-                            onClick={() => setEditingFieldId(null)}
-                            className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2 truncate">
-                            <span>{field.name}</span>
-                            <span className="px-1.5 py-0.5 rounded-full text-[9px] bg-slate-200 text-slate-600 font-mono">
-                              {field.options.length} tùy chọn
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 opacity-60 hover:opacity-100" onClick={e => e.stopPropagation()}>
-                            <button
-                              onClick={() => {
-                                setEditingFieldId(field.id);
-                                setEditingFieldName(field.name);
-                              }}
-                              className="p-1 text-slate-500 hover:text-slate-800 rounded-lg hover:bg-slate-200/50"
-                            >
-                              <Edit3 size={12} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteField(field.id)}
-                              className="p-1 text-slate-500 hover:text-red-600 rounded-lg hover:bg-red-50"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </>
-                      )}
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="text-sm">
+                          {field.id === "boicanh" ? "🏙️" : field.id === "nhanvat" ? "👤" : field.id === "hanhdong" ? "⚡" : "🎯"}
+                        </span>
+                        <span className="font-bold">{field.name}</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-white border border-slate-200 text-slate-700 font-mono font-bold shadow-2xs">
+                        {field.options.length} tùy chọn
+                      </span>
                     </div>
                   ))}
                 </div>
 
-                {/* Add new field row */}
-                <div className="pt-4 border-t border-slate-100 space-y-2">
-                  <label className="text-xs font-bold text-slate-500 block">Thêm Trường Cấu Trúc Mới</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Định dạng, Phân khúc..."
-                      value={newFieldName}
-                      onChange={e => setNewFieldName(e.target.value)}
-                      className="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 focus:outline-none focus:ring-1 focus:ring-[#FF3B5C]"
-                    />
-                    <button
-                      onClick={handleAddField}
-                      className="px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus size={14} />
-                      Thêm
-                    </button>
-                  </div>
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/60 text-[11px] text-slate-500 leading-relaxed">
+                  💡 <strong className="text-slate-700">Ghi chú:</strong> Hệ thống đã tối ưu chuẩn hóa <strong className="text-slate-700">4 trường dữ liệu cốt lõi</strong> (Bối cảnh, Nhân vật, Hành động, Kết quả) với 100 tùy chọn độc quyền, không trùng lặp cho từng ngành nghề. Bạn có thể tự do thêm, sửa hoặc tìm kiếm tùy chọn ở cột bên phải.
                 </div>
               </div>
 

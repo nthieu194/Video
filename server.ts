@@ -2941,14 +2941,14 @@ async function upgradeUserToVIP(
 
     // 1. Cập nhật gói trực tiếp cho User kèm theo systemToken cho bypass rules
     try {
-      await updateDoc(userDocRef, {
+      await setDoc(userDocRef, {
         tier: targetTier,
         systemToken: "CLIPFLOW_SYSTEM_SECURE_BYPASS_2026_TOKEN",
         updatedAt: new Date().toISOString()
-      });
+      }, { merge: true });
       console.log(`[Payment Webhook] Đã nâng cấp thành công gói '${targetTier}' cho User ID: ${targetUserId}`);
     } catch (dbErr: any) {
-      const msg = `Lỗi ghi dữ liệu nâng cấp (updateDoc) trên Firestore: ${dbErr.message || dbErr}`;
+      const msg = `Lỗi ghi dữ liệu nâng cấp (setDoc) trên Firestore: ${dbErr.message || dbErr}`;
       console.error(`[Payment Webhook] ${msg}`, dbErr);
       return { success: false, error: msg };
     }
@@ -3135,7 +3135,7 @@ app.post("/api/payment/check-payos-order", async (req, res) => {
         const txData = txSnap.data();
         plan = txData.plan || "vip";
         amount = txData.amount || 0;
-        targetUser = txData.userId || targetUser;
+        targetUser = (txData.userId && txData.userId !== "anonymous") ? txData.userId : (userId || targetUser);
       }
       ordersToCheck.push({ orderCode: codeStr, plan, amount, userId: targetUser });
     }

@@ -1367,14 +1367,14 @@ export default function App() {
 
     const checkPendingOnFocus = async () => {
       const storedPending = localStorage.getItem("clipflow_pending_payos_order");
-      if (storedPending && !isAutoVerifying) {
-        console.log(`[Window Focus Check] Checking pending order: ${storedPending}`);
+      if (!isAutoVerifying && (storedPending || userProfile?.tier === "free")) {
+        console.log(`[Window Focus Check] Checking pending order: ${storedPending || "recent user transactions"}`);
         try {
           const checkRes = await fetch("/api/payment/check-payos-order", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              orderCode: storedPending,
+              orderCode: storedPending || undefined,
               userId: user.uid
             })
           });
