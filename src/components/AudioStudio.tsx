@@ -156,12 +156,21 @@ export default function AudioStudio({
   // Helper to map selected premium voice ID to Gemini's prebuilt voices and description
   const mapVoiceIdToGeminiPrebuilt = (voiceId: string): { voiceName: string; defaultPersonality: string } => {
     const idMap: Record<string, string> = {
+      // North
       "vi-north-male": "Charon",
+      "vi-north-male-2": "Puck",
       "vi-north-female": "Kore",
+      "vi-north-female-2": "Zephyr",
+      // Central
       "vi-central-male": "Fenrir",
-      "vi-central-female": "Kore", // Map to Kore as prebuilt model voice
+      "vi-central-male-2": "Charon",
+      "vi-central-female": "Kore",
+      "vi-central-female-2": "Zephyr",
+      // South
       "vi-south-male": "Puck",
+      "vi-south-male-2": "Fenrir",
       "vi-south-female": "Zephyr",
+      "vi-south-female-2": "Kore",
       // backward compatibility
       "Charon": "Charon",
       "Kore": "Kore",
@@ -176,11 +185,17 @@ export default function AudioStudio({
     // Map default personality by voice ID or voice Name to keep regional accents
     const personalities: Record<string, string> = {
       "vi-north-male": "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.",
+      "vi-north-male-2": "Giọng nam miền Bắc Hà Nội, trẻ trung, năng động, hiện đại, phát âm sắc nét, phong cách tự nhiên của giới trẻ sáng tạo nội dung và podcast.",
       "vi-north-female": "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.",
+      "vi-north-female-2": "Giọng nữ miền Bắc Hà Nội, sang trọng, sắc sảo, quý phái, tròn vành rõ chữ, chuẩn MC sự kiện cao cấp và quảng cáo TVC.",
       "vi-central-male": "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.",
+      "vi-central-male-2": "Giọng nam miền Trung (Đà Nẵng), trẻ trung, hào sảng, ấm áp, nhịp điệu sôi nổi và gần gũi.",
       "vi-central-female": "Giọng nữ miền Trung Huế, đằm thắm, dịu dàng, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang.",
-      "vi-south-male": "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Sòn ấm áp.",
+      "vi-central-female-2": "Giọng nữ miền Trung xứ Huế, nhẹ nhàng, trong trẻo, e ấp, thùy mị và đượm chất thơ mộng dịu êm.",
+      "vi-south-male": "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Gòn ấm áp.",
+      "vi-south-male-2": "Giọng nam miền Nam Sài Gòn, sôi nổi, hoạt ngôn, dí dỏm, tự nhiên và lôi cuốn phong cách livestream, hài hước và nhiệt tình.",
       "vi-south-female": "Giọng nữ miền Nam Sài Gòn, trẻ trung, mượt mà, tươi tắn, duyên dáng và tràn đầy năng lượng tích cực.",
+      "vi-south-female-2": "Giọng nữ miền Nam Sài Gòn / Tây Nam Bộ, ngọt ngào, dịu mát, tình cảm, sâu lắng, đậm chất phát thanh viên quà tặng âm nhạc.",
       "Charon": "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.",
       "Kore": "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.",
       "Fenrir": "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.",
@@ -246,31 +261,56 @@ export default function AudioStudio({
   }
 
   const PREMIUM_VIETNAMESE_VOICES: PremiumVoice[] = [
+    // --- MIỀN BẮC (4 GIỌNG) ---
     { 
       id: "vi-north-male", 
-      name: "Đăng Khoa (Nam Bắc)", 
+      name: "Đăng Khoa (Nam Bắc - Trầm Ấm)", 
       gender: "male", 
       region: "North", 
       regionLabel: "Miền Bắc", 
-      description: "Trầm ấm, đĩnh đạc, chuẩn phát thanh viên chính luận", 
+      description: "Trầm ấm, đĩnh đạc, chuẩn phát thanh viên chính luận & thời sự", 
       sampleText: "Xin chào quý thính giả, tôi là Đăng Khoa, rất vinh dự được đồng hành cùng các bạn trong dự án thính thuật ngày hôm nay.",
       pitch: 0.9, 
       rate: 0.95 
     },
     { 
+      id: "vi-north-male-2", 
+      name: "Bảo Long (Nam Bắc - Trẻ Trung)", 
+      gender: "male", 
+      region: "North", 
+      regionLabel: "Miền Bắc", 
+      description: "Trẻ trung, hiện đại, năng động, phong cách review công nghệ & podcast", 
+      sampleText: "Xin chào các bạn, mình là Bảo Long! Cùng mình khám phá những góc nhìn mới mẻ và câu chuyện đầy cảm hứng nhé.",
+      pitch: 1.05, 
+      rate: 1.02 
+    },
+    { 
       id: "vi-north-female", 
-      name: "Mai Chi (Nữ Bắc)", 
+      name: "Mai Chi (Nữ Bắc - Dịu Dàng)", 
       gender: "female", 
       region: "North", 
       regionLabel: "Miền Bắc", 
-      description: "Truyền cảm, dịu dàng, ngọt ngào và vô cùng tinh tế", 
+      description: "Truyền cảm, dịu dàng, ngọt ngào và vô cùng tinh tế, chuẩn giọng Hà Nội", 
       sampleText: "Chào mừng quý vị đang đến với Độc Thính Studio, chúc cả nhà một ngày ngập tràn niềm vui và cảm hứng sáng tạo.",
       pitch: 1.12, 
       rate: 0.92 
     },
     { 
+      id: "vi-north-female-2", 
+      name: "Ngọc Hà (Nữ Bắc - Sang Trọng)", 
+      gender: "female", 
+      region: "North", 
+      regionLabel: "Miền Bắc", 
+      description: "Sang trọng, sắc sảo, đài các, chuẩn voice talent quảng cáo TVC & sách nói", 
+      sampleText: "Kính chào quý khách hàng, Ngọc Hà trân trọng mang đến những giá trị thượng lưu và chuẩn mực trong từng câu chuyện.",
+      pitch: 1.0, 
+      rate: 0.94 
+    },
+
+    // --- MIỀN TRUNG (4 GIỌNG) ---
+    { 
       id: "vi-central-male", 
-      name: "Hoàng Nhật (Nam Trung)", 
+      name: "Hoàng Nhật (Nam Trung - Hào Sảng)", 
       gender: "male", 
       region: "Central", 
       regionLabel: "Miền Trung", 
@@ -280,19 +320,43 @@ export default function AudioStudio({
       rate: 0.98 
     },
     { 
+      id: "vi-central-male-2", 
+      name: "Hải Đăng (Nam Trung - Nhiệt Huyết)", 
+      gender: "male", 
+      region: "Central", 
+      regionLabel: "Miền Trung", 
+      description: "Trẻ trung, nhiệt huyết, ấm áp đặc trưng giọng Đà Nẵng hiện đại", 
+      sampleText: "Hải Đăng mến chào tất cả các bạn! Rất vui được chia sẻ năng lượng tích cực và câu chuyện đầy cảm hứng từ miền Trung thân thương.",
+      pitch: 1.02, 
+      rate: 1.0 
+    },
+    { 
       id: "vi-central-female", 
-      name: "Thu Trang (Nữ Trung)", 
+      name: "Thu Trang (Nữ Trung - Đằm Thắm)", 
       gender: "female", 
       region: "Central", 
       regionLabel: "Miền Trung", 
       description: "Đằm thắm, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang", 
-      sampleText: "Dạ, Thu Trang thương gửi lời chào ấm áp nhất, chúc cho những kịch bản của quý thính giả luôn giàu cảm xúc chạm tới trái tim.",
+      sampleText: "Dạ, Thu Trang thương gửi lời chào ấm áp nhất, chúc cho những kịch bản của quý thính giả luôn chạm tới trái tim.",
       pitch: 1.05, 
       rate: 0.9 
     },
     { 
+      id: "vi-central-female-2", 
+      name: "Nhã Uyên (Nữ Trung - Xứ Huế)", 
+      gender: "female", 
+      region: "Central", 
+      regionLabel: "Miền Trung", 
+      description: "Trong trẻo, thanh thoát, ngọt ngào duyên dáng xứ Huế mộng mơ", 
+      sampleText: "Dạ, Nhã Uyên xin kính chào quý thính giả, gửi trọn nét duyên thùy mị và thanh âm xứ Huế đến với tâm hồn của bạn.",
+      pitch: 1.1, 
+      rate: 0.92 
+    },
+
+    // --- MIỀN NAM (4 GIỌNG) ---
+    { 
       id: "vi-south-male", 
-      name: "Minh Quân (Nam Nam)", 
+      name: "Minh Quân (Nam Nam - Thân Thiện)", 
       gender: "male", 
       region: "South", 
       regionLabel: "Miền Nam", 
@@ -302,8 +366,19 @@ export default function AudioStudio({
       rate: 1.02 
     },
     { 
+      id: "vi-south-male-2", 
+      name: "Quốc Bảo (Nam Nam - Năng Động)", 
+      gender: "male", 
+      region: "South", 
+      regionLabel: "Miền Nam", 
+      description: "Sôi nổi, hoạt ngôn, dí dỏm, phong cách MC gameshow & livestream Sài Gòn", 
+      sampleText: "Alo alo, Quốc Bảo xin chào cả nhà nha! Chúc mọi người luôn tràn đầy năng lượng bùng nổ và có những phút giây thật sảng khoái.",
+      pitch: 1.08, 
+      rate: 1.05 
+    },
+    { 
       id: "vi-south-female", 
-      name: "Thanh Trúc (Nữ Nam)", 
+      name: "Thanh Trúc (Nữ Nam - Tươi Tắn)", 
       gender: "female", 
       region: "South", 
       regionLabel: "Miền Nam", 
@@ -311,6 +386,17 @@ export default function AudioStudio({
       sampleText: "Thanh Trúc xin kính chào quý thính giả thân thương, chúc cả nhà một ngày tràn đầy năng lượng tích cực và bão đơn nha.",
       pitch: 1.15, 
       rate: 0.96 
+    },
+    { 
+      id: "vi-south-female-2", 
+      name: "Bảo Ngọc (Nữ Nam - Ngọt Ngào)", 
+      gender: "female", 
+      region: "South", 
+      regionLabel: "Miền Nam", 
+      description: "Ngọt lịm, nồng nàn, truyền cảm phong cách MC truyền hình & radio phương Nam", 
+      sampleText: "Bảo Ngọc mến chào quý khán thính giả, chúc quý vị luôn có những khoảnh khắc thật thư thái và ấm cúng bên người thân yêu.",
+      pitch: 1.08, 
+      rate: 0.95 
     }
   ];
 
@@ -319,11 +405,18 @@ export default function AudioStudio({
   const [isOfflineSpeaking, setIsOfflineSpeaking] = useState<boolean>(false);
 
   // Segment-specific audio states for realistic cloned voice execution
+  type SegmentAudioEntry = { text: string; audioUrl: string } | string;
   const [segmentRecordingIdx, setSegmentRecordingIdx] = useState<number | null>(null);
   const [segmentRecordingState, setSegmentRecordingState] = useState<"idle" | "recording">("idle");
-  const [customSegmentAudios, setCustomSegmentAudios] = useState<Record<number, string>>(() => {
-    const cached = localStorage.getItem("clipflow_custom_segment_audios");
-    return cached ? JSON.parse(cached) : {};
+  const [customSegmentAudios, setCustomSegmentAudios] = useState<Record<number, SegmentAudioEntry>>(() => {
+    try {
+      const cachedV2 = localStorage.getItem("clipflow_custom_segment_audios_v2");
+      if (cachedV2) return JSON.parse(cachedV2);
+      const cached = localStorage.getItem("clipflow_custom_segment_audios");
+      return cached ? JSON.parse(cached) : {};
+    } catch {
+      return {};
+    }
   });
   const [segmentRecorder, setSegmentRecorder] = useState<MediaRecorder | null>(null);
   const [generatingSegmentIdx, setGeneratingSegmentIdx] = useState<number | null>(null);
@@ -333,6 +426,26 @@ export default function AudioStudio({
   const [savingSegmentIdx, setSavingSegmentIdx] = useState<number | null>(null);
   const [loadingCloudAudios, setLoadingCloudAudios] = useState<boolean>(false);
   const [playingCustomSegmentIdx, setPlayingCustomSegmentIdx] = useState<number | null>(null);
+
+  // Helper to reliably retrieve valid audio for a segment matching its current clean text
+  const getSegmentAudio = (index: number): string | null => {
+    const raw = customSegmentAudios[index];
+    if (!raw) return null;
+    const seg = textSegments[index];
+    if (!seg) return null;
+    const currentClean = seg.text.replace(/\[[^\]]+\]/g, "").trim();
+
+    if (typeof raw === "string") {
+      return isValidAudioUrl(raw) ? raw : null;
+    } else if (raw && typeof raw === "object") {
+      if (raw.text && raw.text !== currentClean) {
+        // Text has changed since this audio was created -> do not play audio from old text
+        return null;
+      }
+      return isValidAudioUrl(raw.audioUrl) ? raw.audioUrl : null;
+    }
+    return null;
+  };
 
   // --- Character definitions & Clone simulation voice profiles ---
   const [characterConfigs, setCharacterConfigs] = useState<Record<string, CharacterVoiceConfig>>(() => {
@@ -486,7 +599,7 @@ export default function AudioStudio({
         // Assign default speech synthesis voices to profiles ONLY IF NOT already configured with a premium voice or custom URI
         setCharacterConfigs(prev => {
           const updated = { ...prev };
-          const isPremiumVoice = (uri: string) => ["vi-north-male", "vi-north-female", "vi-central-male", "vi-central-female", "vi-south-male", "vi-south-female"].includes(uri);
+          const isPremiumVoice = (uri: string) => PREMIUM_VIETNAMESE_VOICES.some(v => v.id === uri);
           
           let hasChanged = false;
           if (updated["Narrator"] && (!updated["Narrator"].voiceURI || !isPremiumVoice(updated["Narrator"].voiceURI))) {
@@ -535,6 +648,7 @@ export default function AudioStudio({
       // Reset segment audio recordings when switching tracks to prevent audio bleeding
       setCustomSegmentAudios({});
       localStorage.removeItem("clipflow_custom_segment_audios");
+      localStorage.removeItem("clipflow_custom_segment_audios_v2");
     }
   }, [activeTrackIndex]);
 
@@ -621,9 +735,11 @@ export default function AudioStudio({
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
           const base64data = reader.result as string;
+          const currentSeg = textSegments[index];
+          const segText = currentSeg ? currentSeg.text.replace(/\[[^\]]+\]/g, "").trim() : "";
           setCustomSegmentAudios(prev => {
-            const updated = { ...prev, [index]: base64data };
-            localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+            const updated = { ...prev, [index]: { text: segText, audioUrl: base64data } };
+            localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
             return updated;
           });
           showFeedback(`Đã ghi âm giọng đọc thực tế cho phân đoạn ${index + 1}!`);
@@ -654,9 +770,11 @@ export default function AudioStudio({
     reader.readAsDataURL(file);
     reader.onloadend = () => {
       const base64data = reader.result as string;
+      const currentSeg = textSegments[index];
+      const segText = currentSeg ? currentSeg.text.replace(/\[[^\]]+\]/g, "").trim() : "";
       setCustomSegmentAudios(prev => {
-        const updated = { ...prev, [index]: base64data };
-        localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+        const updated = { ...prev, [index]: { text: segText, audioUrl: base64data } };
+        localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
         return updated;
       });
       showFeedback(`Đã tải lên tệp giọng đọc thực tế cho phân đoạn ${index + 1}!`);
@@ -664,17 +782,19 @@ export default function AudioStudio({
   };
 
   const deleteSegmentAudio = (index: number) => {
+    stopPlaying();
     setCustomSegmentAudios(prev => {
       const updated = { ...prev };
       delete updated[index];
-      localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+      localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
+      localStorage.removeItem("clipflow_custom_segment_audios");
       return updated;
     });
     showFeedback(`Đã xóa giọng đọc phân đoạn ${index + 1}.`);
   };
 
   const downloadSegmentAudio = (index: number) => {
-    const audioData = customSegmentAudios[index];
+    const audioData = getSegmentAudio(index);
     if (!audioData) {
       showFeedback("Không có âm thanh để tải xuống!");
       return;
@@ -748,7 +868,9 @@ export default function AudioStudio({
   };
 
   const clearAllSegmentAudios = () => {
+    stopPlaying();
     setCustomSegmentAudios({});
+    localStorage.removeItem("clipflow_custom_segment_audios_v2");
     localStorage.removeItem("clipflow_custom_segment_audios");
     showFeedback("Đã làm mới và dọn dẹp sạch toàn bộ âm thanh ghi âm/lồng tiếng của kịch bản!");
   };
@@ -757,7 +879,7 @@ export default function AudioStudio({
     // Strictly filter only indices (0 to textSegments.length - 1) of the CURRENT script
     const validSegmentIndices = textSegments
       .map((_, i) => i)
-      .filter(i => !!customSegmentAudios[i]);
+      .filter(i => !!getSegmentAudio(i));
 
     if (validSegmentIndices.length === 0) {
       showFeedback("Chưa có âm thanh lồng tiếng nào của kịch bản hiện tại để tải về!");
@@ -773,7 +895,7 @@ export default function AudioStudio({
 
       const audioBuffers: AudioBuffer[] = [];
       for (const idx of validSegmentIndices) {
-        const audioUrl = customSegmentAudios[idx];
+        const audioUrl = getSegmentAudio(idx);
         if (!audioUrl) continue;
 
         let arrayBuffer: ArrayBuffer;
@@ -841,7 +963,7 @@ export default function AudioStudio({
   };
 
   const saveSegmentToCloud = async (index: number) => {
-    const audioData = customSegmentAudios[index];
+    const audioData = getSegmentAudio(index);
     if (!audioData) {
       showFeedback("Không tìm thấy âm thanh cho phân đoạn này để lưu!");
       return;
@@ -864,6 +986,9 @@ export default function AudioStudio({
       const safeScriptId = scriptId.replace(/[^a-zA-Z0-9_\-]/g, "_");
       const docId = `${safeScriptId}_${index}`;
       
+      const seg = textSegments[index];
+      const cleanText = seg ? seg.text.replace(/\[[^\]]+\]/g, "").trim() : "";
+
       let finalAudioUrl = audioData;
       let shortBase64 = "";
 
@@ -884,8 +1009,8 @@ export default function AudioStudio({
               finalAudioUrl = uploadJson.imageUrl;
               // Also update memory state so subsequent playback uses the fast server url
               setCustomSegmentAudios(prev => {
-                const updated = { ...prev, [index]: finalAudioUrl };
-                localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+                const updated = { ...prev, [index]: { text: cleanText, audioUrl: finalAudioUrl } };
+                localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
                 return updated;
               });
             }
@@ -907,6 +1032,7 @@ export default function AudioStudio({
         audioId: docId,
         scriptId: scriptId,
         segmentIndex: index,
+        text: cleanText,
         audioUrl: finalAudioUrl,
         audioBase64: shortBase64,
         createdAt: new Date().toISOString(),
@@ -935,7 +1061,11 @@ export default function AudioStudio({
       const currentUser = auth?.currentUser;
       if (!currentUser) return;
       
-      const scriptId = activeTrackIndex >= 0 ? playlist[activeTrackIndex].scriptId : "custom_script";
+      // Do not blindly sync generic custom_script from global collection
+      if (activeTrackIndex < 0) return;
+      const scriptId = playlist[activeTrackIndex]?.scriptId;
+      if (!scriptId || scriptId === "custom_script") return;
+
       setLoadingCloudAudios(true);
       try {
         const safeScriptId = scriptId.replace(/[^a-zA-Z0-9_\-]/g, "_");
@@ -946,24 +1076,27 @@ export default function AudioStudio({
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (data && (data.audioUrl || data.audioBase64)) {
-              return { index: sIdx, audioUrl: data.audioUrl || data.audioBase64 };
+              const cleanText = seg.text.replace(/\[[^\]]+\]/g, "").trim();
+              if (!data.text || data.text === cleanText) {
+                return { index: sIdx, text: cleanText, audioUrl: data.audioUrl || data.audioBase64 };
+              }
             }
           }
           return null;
         });
         
         const results = await Promise.all(fetchPromises);
-        const newAudios: Record<number, string> = {};
+        const newAudios: Record<number, { text: string; audioUrl: string }> = {};
         results.forEach(res => {
           if (res) {
-            newAudios[res.index] = res.audioUrl;
+            newAudios[res.index] = { text: res.text, audioUrl: res.audioUrl };
           }
         });
         
         if (Object.keys(newAudios).length > 0) {
           setCustomSegmentAudios(prev => {
             const merged = { ...prev, ...newAudios };
-            localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(merged));
+            localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(merged));
             return merged;
           });
           console.log(`[Cloud Sync] Synced ${Object.keys(newAudios).length} segment audios from Firestore.`);
@@ -1011,10 +1144,11 @@ export default function AudioStudio({
 
       const data = await response.json();
       if (data.success && data.audioBase64) {
-        const audioUrl = `data:${data.mimeType};base64,${data.audioBase64}`;
+        const mimeType = data.mimeType || "audio/mp3";
+        const audioUrl = `data:${mimeType};base64,${data.audioBase64}`;
         setCustomSegmentAudios(prev => {
-          const updated = { ...prev, [index]: audioUrl };
-          localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+          const updated = { ...prev, [index]: { text: cleanText, audioUrl } };
+          localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
           return updated;
         });
         showFeedback(`Đã áp dụng giọng nhân bản thực tế thành công (Gemini lồng tiếng: ${data.voiceName}) cho phân đoạn ${index + 1}!`);
@@ -1051,6 +1185,7 @@ export default function AudioStudio({
     // Clear previous segment audios so that all sentences are cleanly synthesized fresh for this exact script
     setCustomSegmentAudios({});
     localStorage.removeItem("clipflow_custom_segment_audios");
+    localStorage.removeItem("clipflow_custom_segment_audios_v2");
     setBatchProgress({ current: 0, total: textSegments.length });
     showFeedback(`Đang khởi tạo lồng tiếng AI đồng loạt cho ${textSegments.length} câu thoại kịch bản...`);
     
@@ -1192,29 +1327,10 @@ export default function AudioStudio({
 
     // 2. If not cached or Firestore unavailable, generate it via API (this only runs once per voice)
     try {
-      let voiceName = "Charon";
-      let personality = v.description;
-      if (v.id === "vi-north-male") {
-        voiceName = "Charon";
-        personality = "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.";
-      } else if (v.id === "vi-north-female") {
-        voiceName = "Kore";
-        personality = "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.";
-      } else if (v.id === "vi-central-male") {
-        voiceName = "Fenrir";
-        personality = "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.";
-      } else if (v.id === "vi-central-female") {
-        voiceName = "Kore";
-        personality = "Giọng nữ miền Trung Huế, đằm thắm, dịu dàng, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang.";
-      } else if (v.id === "vi-south-male") {
-        voiceName = "Puck";
-        personality = "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Gòn ấm áp.";
-      } else if (v.id === "vi-south-female") {
-        voiceName = "Zephyr";
-        personality = "Giọng nữ miền Nam Sài Gòn, trẻ trung, mượt mà, tươi tắn, duyên dáng và tràn đầy năng lượng tích cực.";
-      }
+      const { voiceName, defaultPersonality } = mapVoiceIdToGeminiPrebuilt(v.id);
+      const personality = `${v.description} - ${defaultPersonality}`;
 
-      console.log(`[Cache Miss] Requesting live Gemini TTS API for voice sample: ${v.id}`);
+      console.log(`[Cache Miss] Requesting live Gemini TTS API for voice sample: ${v.id} (${voiceName})`);
       const response = await fetch("/api/audio-studio/generate-tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1434,20 +1550,23 @@ export default function AudioStudio({
 
     setTextSegments(segments);
 
-    // Prune any segment audio keys that exceed the current segments length
+    // Prune any segment audio keys that do not match the current script segment text
     setCustomSegmentAudios(prev => {
       let changed = false;
-      const pruned: Record<number, string> = {};
-      Object.entries(prev).forEach(([key, val]) => {
-        const idx = Number(key);
-        if (idx >= 0 && idx < segments.length && typeof val === "string") {
-          pruned[idx] = val;
-        } else {
-          changed = true;
+      const pruned: Record<number, { text: string; audioUrl: string }> = {};
+      segments.forEach((seg, idx) => {
+        const clean = seg.text.replace(/\[[^\]]+\]/g, "").trim();
+        const existing = prev[idx];
+        if (existing) {
+          if (typeof existing === "object" && existing.text === clean && isValidAudioUrl(existing.audioUrl)) {
+            pruned[idx] = existing;
+          } else {
+            changed = true;
+          }
         }
       });
-      if (changed) {
-        localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(pruned));
+      if (changed || Object.keys(pruned).length !== Object.keys(prev).length) {
+        localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(pruned));
         return pruned;
       }
       return prev;
@@ -1533,7 +1652,14 @@ export default function AudioStudio({
       synthesisRef.current.cancel();
     }
     if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current.removeAttribute("src");
+        currentAudioRef.current.load();
+      } catch (e) {
+        // ignore
+      }
       currentAudioRef.current = null;
     }
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -1546,31 +1672,41 @@ export default function AudioStudio({
 
   const togglePlaySegmentAudio = (sIdx: number, audioSrc: string) => {
     if (playingCustomSegmentIdx === sIdx) {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
-      setPlayingCustomSegmentIdx(null);
+      stopPlaying();
       return;
     }
 
     stopPlaying();
 
+    if (!audioSrc || !isValidAudioUrl(audioSrc)) {
+      showFeedback("Tệp âm thanh phân đoạn không hợp lệ hoặc đã bị thay đổi.");
+      return;
+    }
+
     try {
-      const audio = new Audio(audioSrc);
+      const audio = new Audio();
+      audio.src = audioSrc;
       currentAudioRef.current = audio;
       setPlayingCustomSegmentIdx(sIdx);
       audio.onended = () => {
         setPlayingCustomSegmentIdx(null);
-        currentAudioRef.current = null;
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
       };
-      audio.onerror = () => {
+      audio.onerror = (e) => {
+        console.warn("Lỗi phát audio phân đoạn:", e);
         setPlayingCustomSegmentIdx(null);
-        currentAudioRef.current = null;
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
       };
       audio.play().catch(err => {
         console.warn("Lỗi phát audio phân đoạn:", err);
         setPlayingCustomSegmentIdx(null);
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
       });
     } catch (e) {
       console.warn("Lỗi khởi tạo audio phân đoạn:", e);
@@ -1727,7 +1863,7 @@ export default function AudioStudio({
     };
 
     // 1. Check if there is a custom segment-specific real recording/upload first!
-    const customSegmentAudioUrl = customSegmentAudios[index];
+    const customSegmentAudioUrl = getSegmentAudio(index);
     if (customSegmentAudioUrl) {
       playAudioElement(customSegmentAudioUrl, `Giọng đọc thực tế phân đoạn ${index + 1}`);
     } 
@@ -1739,27 +1875,8 @@ export default function AudioStudio({
           return;
         }
         try {
-          let voiceName = "Charon";
-          let personality = premiumVoice.description;
-          if (premiumVoice.id === "vi-north-male") {
-            voiceName = "Charon";
-            personality = "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.";
-          } else if (premiumVoice.id === "vi-north-female") {
-            voiceName = "Kore";
-            personality = "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.";
-          } else if (premiumVoice.id === "vi-central-male") {
-            voiceName = "Fenrir";
-            personality = "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.";
-          } else if (premiumVoice.id === "vi-central-female") {
-            voiceName = "Kore";
-            personality = "Giọng nữ miền Trung Huế, đằm thắm, dịu dàng, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang.";
-          } else if (premiumVoice.id === "vi-south-male") {
-            voiceName = "Puck";
-            personality = "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Gòn ấm áp.";
-          } else if (premiumVoice.id === "vi-south-female") {
-            voiceName = "Zephyr";
-            personality = "Giọng nữ miền Nam Sài Gòn, trẻ trung, mượt mà, tươi tắn, duyên dáng và tràn đầy năng lượng tích cực.";
-          }
+          const { voiceName, defaultPersonality } = mapVoiceIdToGeminiPrebuilt(premiumVoice.id);
+          const personality = `${premiumVoice.description} - ${defaultPersonality}`;
 
           const response = await fetch("/api/audio-studio/generate-tts", {
             method: "POST",
@@ -1777,8 +1894,8 @@ export default function AudioStudio({
             const audioUrl = `data:${mimeType};base64,${data.audioBase64}`;
             if (isValidAudioUrl(audioUrl)) {
               setCustomSegmentAudios(prev => {
-                const updated = { ...prev, [index]: audioUrl };
-                localStorage.setItem("clipflow_custom_segment_audios", JSON.stringify(updated));
+                const updated = { ...prev, [index]: { text: cleanText, audioUrl } };
+                localStorage.setItem("clipflow_custom_segment_audios_v2", JSON.stringify(updated));
                 return updated;
               });
               playAudioElement(audioUrl, `Giọng Premium AI (${premiumVoice.name})`);
@@ -2741,7 +2858,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
               )}
 
               {/* Master Control & Playback Bar for the Entire Script */}
-              {textSegments.some((_, i) => !!customSegmentAudios[i]) && (
+              {textSegments.some((_, i) => !!getSegmentAudio(i)) && (
                 <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-950 to-cyan-950 text-white rounded-2xl border border-cyan-500/30 shadow-xl space-y-3">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/10 pb-2.5">
                     <div className="flex items-center gap-2">
@@ -2752,7 +2869,7 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                         <h4 className="font-extrabold text-xs text-white flex items-center gap-2">
                           <span>KẾT QUẢ LỒNG TIẾNG ĐỒNG LOẠT HOÀN TẤT</span>
                           <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                            {textSegments.filter((_, i) => !!customSegmentAudios[i]).length}/{textSegments.length} câu đã có Audio
+                            {textSegments.filter((_, i) => !!getSegmentAudio(i)).length}/{textSegments.length} câu đã có Audio
                           </span>
                         </h4>
                         <p className="text-[10px] text-slate-400">
@@ -2817,14 +2934,14 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                   Áp dụng <strong>giọng đọc nâng cao 3 miền</strong> hoặc tự sản xuất âm thanh chất lượng phòng thu cho từng phân đoạn thoại. Khi phát kịch bản, hệ thống sẽ tự động phát các tệp âm thanh AI này.
                 </span>
                 <span className="text-[10px] bg-cyan-100 text-cyan-800 font-mono font-bold px-2.5 py-1 rounded-full border border-cyan-200">
-                  {textSegments.filter((_, i) => !!customSegmentAudios[i]).length} / {textSegments.length} câu đã có giọng thực tế
+                  {textSegments.filter((_, i) => !!getSegmentAudio(i)).length} / {textSegments.length} câu đã có giọng thực tế
                 </span>
               </div>
 
               <div className="space-y-3 max-h-[35rem] overflow-y-auto pr-1 scrollbar-thin">
                 {textSegments.map((seg, sIdx) => {
                   const isActive = sIdx === currentSegmentIdx && isSpeaking;
-                  const customAudio = customSegmentAudios[sIdx];
+                  const customAudio = getSegmentAudio(sIdx);
                   const charConfig = characterConfigs["Narrator"];
                   const premiumVoice = PREMIUM_VIETNAMESE_VOICES.find(v => v.id === charConfig?.voiceURI);
                   const isGeneratingThis = generatingSegmentIdx === sIdx;
@@ -3020,8 +3137,8 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                     className="p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-cyan-500/40 transition-all flex flex-col justify-between gap-3 relative group"
                   >
                     <div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-black text-slate-100 tracking-wide flex items-center gap-1.5">
+                      <div className="flex justify-between items-start gap-1">
+                        <span className="text-xs font-black text-slate-100 tracking-wide flex items-center gap-1.5 flex-wrap">
                           {voice.name}
                           {cachedVoiceIds.includes(voice.id) && (
                             <span className="flex items-center gap-0.5 text-[8px] bg-emerald-950 text-emerald-400 border border-emerald-500/20 px-1 py-0.5 rounded font-bold cursor-help" title="Âm thanh nghe thử đã được lưu trên đám mây Firestore để tối ưu tốc độ">
@@ -3029,9 +3146,14 @@ Nam (Cười ngập ngừng): Dạ thưa sếp, nhưng giờ đã là 9 giờ t�
                             </span>
                           )}
                         </span>
-                        <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded border ${regionColor}`}>
-                          {voice.regionLabel}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded border ${voice.gender === "male" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" : "bg-pink-500/10 text-pink-400 border-pink-500/20"}`}>
+                            {voice.gender === "male" ? "Nam" : "Nữ"}
+                          </span>
+                          <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded border ${regionColor}`}>
+                            {voice.regionLabel}
+                          </span>
+                        </div>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed line-clamp-2">
                         {voice.description}
