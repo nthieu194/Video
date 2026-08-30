@@ -1,0 +1,97 @@
+{
+  "name": "ClipViral - AI Script & Video Studio",
+  "short_name": "ClipViral",
+  "description": "Viết nhanh. Quay chất. Dễ viral. Nền tảng AI tạo kịch bản, vẽ ảnh điện ảnh và dựng video ngắn chuyên nghiệp.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F172A",
+  "theme_color": "#0B5CFF",
+  "categories": [
+    "productivity",
+    "utilities",
+    "entertainment",
+    "video",
+    "multimedia"
+  ],
+  "lang": "vi",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tạo Kịch Bản AI",
+      "short_name": "Tạo Kịch Bản",
+      "description": "Viết kịch bản video TikTok, Reels, Shorts với AI",
+      "url": "/?tab=create",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Tạo Ảnh AI",
+      "short_name": "Tạo Ảnh",
+      "description": "Tạo hình ảnh phân cảnh nghệ thuật",
+      "url": "/?tab=image",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Làm Phim Video AI",
+      "short_name": "Làm Phim",
+      "description": "Dựng video với Omni Flash & Veo 3.1",
+      "url": "/?tab=video",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Máy Nhắc Chữ",
+      "short_name": "Nhắc Chữ",
+      "description": "Mở máy nhắc chữ Teleprompter",
+      "url": "/?tab=prompter",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

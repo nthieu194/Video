@@ -1,11 +1,41 @@
 <!doctype html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ClipViral - Viết nhanh. Quay chất. Dễ viral.</title>
-    <meta name="description" content="ClipViral - AI Script Generator & Studio for Short Videos. Viết nhanh. Quay chất. Dễ viral." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>ClipViral - Viết Nhanh Quay Chất Dễ Viral</title>
+    <meta name="description" content="Studio sáng tạo kịch bản video ngắn AI chuyên sâu (TikTok, Reels, Shorts), tích hợp máy nhắc chữ, phòng lồng tiếng và lập kế hoạch nội dung đa nền tảng." />
+    
+    <!-- PWA & Standalone App Capabilities -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ClipViral" />
+    <meta name="application-name" content="ClipViral" />
     <meta name="theme-color" content="#0B5CFF" />
+    <meta name="msapplication-TileColor" content="#0B5CFF" />
+    <meta name="msapplication-TileImage" content="/icon-192.png" />
+
+    <!-- App Icons -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png" />
+
+    <!-- Open Graph / Social Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ClipViral - Viết Nhanh Quay Chất Dễ Viral" />
+    <meta property="og:description" content="Studio sáng tạo kịch bản video ngắn AI chuyên sâu (TikTok, Reels, Shorts), tích hợp máy nhắc chữ, phòng lồng tiếng và lập kế hoạch nội dung đa nền tảng." />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ClipViral - Viết Nhanh Quay Chất Dễ Viral" />
+    <meta name="twitter:description" content="Studio sáng tạo kịch bản video ngắn AI chuyên sâu (TikTok, Reels, Shorts)." />
+    <meta name="twitter:image" content="/icon-512.png" />
+
     <script>
       // Prevent global ReferenceError for EmptyRanges in headless WebKit/automated running environments
       if (typeof window !== 'undefined' && !('EmptyRanges' in window)) {
@@ -25,11 +55,24 @@
       if (typeof window !== 'undefined') {
         var EmptyRanges = window.EmptyRanges;
       }
+
+      // Register PWA Service Worker
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(
+            (reg) => {
+              console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+            },
+            (err) => {
+              console.warn('[PWA] ServiceWorker registration failed:', err);
+            }
+          );
+        });
+      }
     </script>
   </head>
-  <body>
+  <body class="bg-slate-900 text-slate-100 antialiased selection:bg-[#0B5CFF] selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

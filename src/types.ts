@@ -133,4 +133,41 @@ export interface UserProfile {
   updatedAt: string;
 }
 
+export interface GeneratedImageItem {
+  id: string;
+  userId?: string;
+  url: string;
+  prompt: string;
+  style: string;
+  aspectRatio: string;
+  model: string;
+  scriptId?: string;
+  scriptTitle?: string;
+  sceneIndex?: number;
+  sceneDialogue?: string;
+  createdAt: string;
+  isFavorite?: boolean;
+}
+
+export interface GeneratedVideoItem {
+  id: string;
+  userId?: string;
+  url?: string;
+  prompt: string;
+  imageUrl?: string;
+  aspectRatio: "16:9" | "9:16";
+  resolution: "720p" | "1080p";
+  model: string;
+  cameraMotion?: string;
+  duration?: number;
+  operationName?: string;
+  status: "generating" | "completed" | "failed";
+  error?: string;
+  scriptId?: string;
+  scriptTitle?: string;
+  sceneIndex?: number;
+  sceneDialogue?: string;
+  createdAt: string;
+}
+
 

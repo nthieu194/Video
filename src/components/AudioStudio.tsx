@@ -156,21 +156,27 @@ export default function AudioStudio({
   // Helper to map selected premium voice ID to Gemini's prebuilt voices and description
   const mapVoiceIdToGeminiPrebuilt = (voiceId: string): { voiceName: string; defaultPersonality: string } => {
     const idMap: Record<string, string> = {
-      // North
+      // North (6 voices: 3 male, 3 female)
       "vi-north-male": "Charon",
       "vi-north-male-2": "Puck",
+      "vi-north-male-3": "Fenrir",
       "vi-north-female": "Kore",
       "vi-north-female-2": "Zephyr",
-      // Central
+      "vi-north-female-3": "Kore",
+      // Central (6 voices: 3 male, 3 female)
       "vi-central-male": "Fenrir",
       "vi-central-male-2": "Charon",
+      "vi-central-male-3": "Puck",
       "vi-central-female": "Kore",
       "vi-central-female-2": "Zephyr",
-      // South
+      "vi-central-female-3": "Kore",
+      // South (6 voices: 3 male, 3 female)
       "vi-south-male": "Puck",
       "vi-south-male-2": "Fenrir",
+      "vi-south-male-3": "Charon",
       "vi-south-female": "Zephyr",
       "vi-south-female-2": "Kore",
+      "vi-south-female-3": "Zephyr",
       // backward compatibility
       "Charon": "Charon",
       "Kore": "Kore",
@@ -184,18 +190,28 @@ export default function AudioStudio({
     
     // Map default personality by voice ID or voice Name to keep regional accents
     const personalities: Record<string, string> = {
+      // North
       "vi-north-male": "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.",
       "vi-north-male-2": "Giọng nam miền Bắc Hà Nội, trẻ trung, năng động, hiện đại, phát âm sắc nét, phong cách tự nhiên của giới trẻ sáng tạo nội dung và podcast.",
+      "vi-north-male-3": "Giọng nam miền Bắc, truyền cảm, hào sảng, phong trần, chất giọng trầm dày thu hút, chuẩn người dẫn chuyện phóng sự tài liệu.",
       "vi-north-female": "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.",
       "vi-north-female-2": "Giọng nữ miền Bắc Hà Nội, sang trọng, sắc sảo, quý phái, tròn vành rõ chữ, chuẩn MC sự kiện cao cấp và quảng cáo TVC.",
+      "vi-north-female-3": "Giọng nữ miền Bắc, trong trẻo, nhẹ nhàng, tự nhiên, tươi tắn như sương mai, chuẩn phong cách kể chuyện audio book và sách nói.",
+      // Central
       "vi-central-male": "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.",
       "vi-central-male-2": "Giọng nam miền Trung (Đà Nẵng), trẻ trung, hào sảng, ấm áp, nhịp điệu sôi nổi và gần gũi.",
+      "vi-central-male-3": "Giọng nam miền Trung, phóng khoáng, phong trần, đậm đà tình người khúc ruột miền Trung, giọng điệu kiên cường và cuốn hút.",
       "vi-central-female": "Giọng nữ miền Trung Huế, đằm thắm, dịu dàng, sâu lắng, nhẹ nhàng ấm áp tựa dòng Hương Giang.",
       "vi-central-female-2": "Giọng nữ miền Trung xứ Huế, nhẹ nhàng, trong trẻo, e ấp, thùy mị và đượm chất thơ mộng dịu êm.",
+      "vi-central-female-3": "Giọng nữ miền Trung (Nha Trang / Đà Nẵng), duyên dáng, tươi sáng, mượt mà, chân tình và giàu sức gợi cảm xúc miền biển.",
+      // South
       "vi-south-male": "Giọng nam miền Nam Sài Gòn, thân thiện, lưu loát, hào sảng, chuẩn giọng miền Nam Sài Gòn ấm áp.",
       "vi-south-male-2": "Giọng nam miền Nam Sài Gòn, sôi nổi, hoạt ngôn, dí dỏm, tự nhiên và lôi cuốn phong cách livestream, hài hước và nhiệt tình.",
+      "vi-south-male-3": "Giọng nam miền Nam Sài Gòn, lịch lãm, điềm tĩnh, ấm áp, chuẩn doanh nhân hiện đại và cố vấn tài chính thấu cảm.",
       "vi-south-female": "Giọng nữ miền Nam Sài Gòn, trẻ trung, mượt mà, tươi tắn, duyên dáng và tràn đầy năng lượng tích cực.",
       "vi-south-female-2": "Giọng nữ miền Nam Sài Gòn / Tây Nam Bộ, ngọt ngào, dịu mát, tình cảm, sâu lắng, đậm chất phát thanh viên quà tặng âm nhạc.",
+      "vi-south-female-3": "Giọng nữ miền Nam, đáng yêu, dí dỏm, hoạt bát, dễ thương, chuyên review ẩm thực, du lịch và video ngắn xu hướng triệu view.",
+      // Gemini base names
       "Charon": "Giọng nam miền Bắc Hà Nội, ấm áp, đĩnh đạc, chuẩn phát thanh viên chính luận, phát âm cực kỳ rõ ràng, ngắt nghỉ đúng nghĩa.",
       "Kore": "Giọng nữ miền Bắc Hà Nội, truyền cảm, dịu dàng, ngọt ngào, tinh tế, chuẩn giọng Hà Nội mượt mà.",
       "Fenrir": "Giọng nam miền Trung, mộc mạc, hào sảng, chân chất, giàu cảm xúc tự sự của người miền Trung.",
@@ -261,7 +277,7 @@ export default function AudioStudio({
   }
 
   const PREMIUM_VIETNAMESE_VOICES: PremiumVoice[] = [
-    // --- MIỀN BẮC (4 GIỌNG) ---
+    // --- MIỀN BẮC (6 GIỌNG: 3 NAM, 3 NỮ) ---
     { 
       id: "vi-north-male", 
       name: "Đăng Khoa (Nam Bắc - Trầm Ấm)", 
@@ -285,6 +301,17 @@ export default function AudioStudio({
       rate: 1.02 
     },
     { 
+      id: "vi-north-male-3", 
+      name: "Tuấn Kiệt (Nam Bắc - Truyền Cảm)", 
+      gender: "male", 
+      region: "North", 
+      regionLabel: "Miền Bắc", 
+      description: "Hào sảng, truyền cảm, chất giọng dày dặn phóng sự tài liệu & sách nói", 
+      sampleText: "Tuấn Kiệt xin kính chào quý thính giả, cùng lắng đọng tâm hồn qua những câu chuyện sâu lắng và giá trị nhân văn nhé.",
+      pitch: 0.95, 
+      rate: 0.96 
+    },
+    { 
       id: "vi-north-female", 
       name: "Mai Chi (Nữ Bắc - Dịu Dàng)", 
       gender: "female", 
@@ -306,8 +333,19 @@ export default function AudioStudio({
       pitch: 1.0, 
       rate: 0.94 
     },
+    { 
+      id: "vi-north-female-3", 
+      name: "Phương Thảo (Nữ Bắc - Trong Trẻo)", 
+      gender: "female", 
+      region: "North", 
+      regionLabel: "Miền Bắc", 
+      description: "Trong trẻo, thanh thoát, tự nhiên như sương mai, chuẩn audio book & kể chuyện thiếu nhi", 
+      sampleText: "Phương Thảo xin chào các bạn nhỏ và quý thính giả, chúc mọi người có những phút giây thư giãn thật êm đềm.",
+      pitch: 1.18, 
+      rate: 0.94 
+    },
 
-    // --- MIỀN TRUNG (4 GIỌNG) ---
+    // --- MIỀN TRUNG (6 GIỌNG: 3 NAM, 3 NỮ) ---
     { 
       id: "vi-central-male", 
       name: "Hoàng Nhật (Nam Trung - Hào Sảng)", 
@@ -331,6 +369,17 @@ export default function AudioStudio({
       rate: 1.0 
     },
     { 
+      id: "vi-central-male-3", 
+      name: "Đức Huy (Nam Trung - Phong Trần)", 
+      gender: "male", 
+      region: "Central", 
+      regionLabel: "Miền Trung", 
+      description: "Phóng khoáng, kiên định, chân thành và đầm ấm chất biển miền Trung", 
+      sampleText: "Đức Huy xin chào anh em bạn bè muôn nơi, cùng nhau vững bước vượt qua mọi thử thách cuộc sống nhé bà con!",
+      pitch: 0.9, 
+      rate: 0.97 
+    },
+    { 
       id: "vi-central-female", 
       name: "Thu Trang (Nữ Trung - Đằm Thắm)", 
       gender: "female", 
@@ -352,8 +401,19 @@ export default function AudioStudio({
       pitch: 1.1, 
       rate: 0.92 
     },
+    { 
+      id: "vi-central-female-3", 
+      name: "Thảo My (Nữ Trung - Duyên Dáng)", 
+      gender: "female", 
+      region: "Central", 
+      regionLabel: "Miền Trung", 
+      description: "Tươi tắn, duyên dáng, gần gũi và mượt mà phong cách MC du lịch miền Trung", 
+      sampleText: "Dạ, Thảo My mến chào cả nhà! Hãy cùng My khám phá những danh lam thắng cảnh và ẩm thực tuyệt vời miền Trung nghen.",
+      pitch: 1.12, 
+      rate: 0.95 
+    },
 
-    // --- MIỀN NAM (4 GIỌNG) ---
+    // --- MIỀN NAM (6 GIỌNG: 3 NAM, 3 NỮ) ---
     { 
       id: "vi-south-male", 
       name: "Minh Quân (Nam Nam - Thân Thiện)", 
@@ -377,6 +437,17 @@ export default function AudioStudio({
       rate: 1.05 
     },
     { 
+      id: "vi-south-male-3", 
+      name: "Hoàng Nam (Nam Nam - Lịch Lãm)", 
+      gender: "male", 
+      region: "South", 
+      regionLabel: "Miền Nam", 
+      description: "Điềm đạm, lịch lãm, giọng trầm sang trọng chuẩn phong cách doanh nhân khởi nghiệp Sài Gòn", 
+      sampleText: "Xin chào quý đối tác và các bạn, Hoàng Nam rất vui được chia sẻ những tư duy và giải pháp kinh doanh đột phá.",
+      pitch: 0.92, 
+      rate: 0.98 
+    },
+    { 
       id: "vi-south-female", 
       name: "Thanh Trúc (Nữ Nam - Tươi Tắn)", 
       gender: "female", 
@@ -397,6 +468,17 @@ export default function AudioStudio({
       sampleText: "Bảo Ngọc mến chào quý khán thính giả, chúc quý vị luôn có những khoảnh khắc thật thư thái và ấm cúng bên người thân yêu.",
       pitch: 1.08, 
       rate: 0.95 
+    },
+    { 
+      id: "vi-south-female-3", 
+      name: "Yến Nhi (Nữ Nam - Đáng Yêu)", 
+      gender: "female", 
+      region: "South", 
+      regionLabel: "Miền Nam", 
+      description: "Đáng yêu, hoạt bát, dễ thương, chuyên review ẩm thực, du lịch và video ngắn xu hướng triệu view", 
+      sampleText: "Hế lô mọi người, Yến Nhi nè! Hôm nay cùng Nhi quẩy tưng bừng và săn những món ngon siêu hot hit nha cả nhà ơi!",
+      pitch: 1.22, 
+      rate: 1.04 
     }
   ];
 
@@ -427,6 +509,17 @@ export default function AudioStudio({
   const [loadingCloudAudios, setLoadingCloudAudios] = useState<boolean>(false);
   const [playingCustomSegmentIdx, setPlayingCustomSegmentIdx] = useState<number | null>(null);
 
+  // Helper to calculate a text-specific deterministic hash for voice samples
+  const computeSampleCacheKey = (voiceId: string, sampleText: string) => {
+    let hash = 0;
+    const clean = (sampleText || "").trim().replace(/\s+/g, " ");
+    for (let i = 0; i < clean.length; i++) {
+      hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+      hash |= 0;
+    }
+    return `sample_${voiceId}_${Math.abs(hash).toString(36)}`;
+  };
+
   // Helper to reliably retrieve valid audio for a segment matching its current clean text
   const getSegmentAudio = (index: number): string | null => {
     const raw = customSegmentAudios[index];
@@ -436,7 +529,8 @@ export default function AudioStudio({
     const currentClean = seg.text.replace(/\[[^\]]+\]/g, "").trim();
 
     if (typeof raw === "string") {
-      return isValidAudioUrl(raw) ? raw : null;
+      // Discard legacy string formats lacking text metadata to strictly prevent replaying audio from earlier sessions/files
+      return null;
     } else if (raw && typeof raw === "object") {
       if (raw.text && raw.text !== currentClean) {
         // Text has changed since this audio was created -> do not play audio from old text
@@ -1211,15 +1305,17 @@ export default function AudioStudio({
     stopPlaying();
     
     // Clear local storage cache
-    const localCacheKey = `clipflow_voice_sample_cache_${voice.id}`;
+    const cacheKey = computeSampleCacheKey(voice.id, voice.sampleText);
+    const localCacheKey = `clipflow_${cacheKey}`;
     localStorage.removeItem(localCacheKey);
+    localStorage.removeItem(`clipflow_voice_sample_cache_${voice.id}`);
     
     // Clear Firestore cache document
     if (db) {
       try {
-        const docRef = doc(db, "voice_samples", voice.id);
+        const docRef = doc(db, "voice_samples", cacheKey);
         await deleteDoc(docRef);
-        console.log(`[Cache Clear] Đã xóa cache của ${voice.id} khỏi Firestore.`);
+        console.log(`[Cache Clear] Đã xóa cache của ${voice.id} (${cacheKey}) khỏi Firestore.`);
       } catch (err) {
         console.warn(`Lỗi xóa cache ${voice.id} từ Firestore:`, err);
       }
@@ -1246,13 +1342,14 @@ export default function AudioStudio({
 
     setIsPlayingSampleId(v.id);
 
-    const localCacheKey = `clipflow_voice_sample_cache_${v.id}`;
+    const cacheKey = computeSampleCacheKey(v.id, v.sampleText);
+    const localCacheKey = `clipflow_${cacheKey}`;
 
     // 1. Thử tải từ bộ nhớ cục bộ LocalStorage trước (nhanh nhất, hoạt động cả khi offline)
     const localCachedBase64 = localStorage.getItem(localCacheKey);
     if (localCachedBase64) {
       try {
-        console.log(`[Local Cache Hit] Đang phát giọng mẫu ${v.id} trực tiếp từ LocalStorage...`);
+        console.log(`[Local Cache Hit] Đang phát giọng mẫu ${v.id} (${cacheKey}) trực tiếp từ LocalStorage...`);
         const audioUrl = `data:audio/mp3;base64,${localCachedBase64}`;
         const audio = new Audio(audioUrl);
         currentAudioRef.current = audio;
@@ -1281,14 +1378,14 @@ export default function AudioStudio({
     // 2. Try to fetch cached sample audio from Firebase Firestore first
     if (db) {
       try {
-        const docRef = doc(db, "voice_samples", v.id);
+        const docRef = doc(db, "voice_samples", cacheKey);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
           const cacheData = docSnap.data();
           if (cacheData && cacheData.audioBase64) {
             const mimeType = cacheData.mimeType || "audio/mp3";
             const audioUrl = `data:${mimeType};base64,${cacheData.audioBase64}`;
-            console.log(`[Firebase Cache Hit] Loaded premium voice sample for ${v.id} directly from Firestore!`);
+            console.log(`[Firebase Cache Hit] Loaded premium voice sample for ${v.id} (${cacheKey}) directly from Firestore!`);
             
             setCachedVoiceIds(prev => prev.includes(v.id) ? prev : [...prev, v.id]);
 
@@ -1356,13 +1453,15 @@ export default function AudioStudio({
         // 3. Cache the generated sample back to Firestore so future playbacks bypass the API
         if (db) {
           try {
-            await setDoc(doc(db, "voice_samples", v.id), {
+            await setDoc(doc(db, "voice_samples", cacheKey), {
               voiceId: v.id,
+              cacheKey: cacheKey,
               audioBase64: data.audioBase64,
               mimeType: mimeType,
+              sampleText: v.sampleText,
               createdAt: new Date().toISOString()
             });
-            console.log(`[Firebase Cache Saved] Successfully cached premium voice sample for ${v.id} to Firestore!`);
+            console.log(`[Firebase Cache Saved] Successfully cached premium voice sample for ${v.id} (${cacheKey}) to Firestore!`);
             setCachedVoiceIds(prev => prev.includes(v.id) ? prev : [...prev, v.id]);
           } catch (saveErr) {
             console.warn("Lỗi lưu cache giọng nói vào Firestore:", saveErr);
@@ -1425,11 +1524,14 @@ export default function AudioStudio({
     setIsPlayingSampleId(matchedVoice.id);
     setGeneratingCustomSample(true);
 
+    const cacheKey = computeSampleCacheKey(matchedVoice.id, independentSampleText);
+    const localCacheKey = `clipflow_${cacheKey}`;
+
     try {
       const { voiceName, defaultPersonality } = mapVoiceIdToGeminiPrebuilt(matchedVoice.id);
       let personality = `${matchedVoice.description} - ${independentPersonality || defaultPersonality}`;
       
-      console.log(`[Custom Voice Sample] Generating custom sample for ${matchedVoice.id} with text: "${independentSampleText}"`);
+      console.log(`[Custom Voice Sample] Generating custom sample for ${matchedVoice.id} (${cacheKey}) with text: "${independentSampleText}"`);
       const response = await fetch("/api/audio-studio/generate-tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1447,7 +1549,7 @@ export default function AudioStudio({
         
         // Lưu cache cục bộ LocalStorage cho giọng mẫu tùy chỉnh
         try {
-          localStorage.setItem(`clipflow_voice_sample_cache_${matchedVoice.id}`, data.audioBase64);
+          localStorage.setItem(localCacheKey, data.audioBase64);
         } catch (lsErr) {
           console.warn("Không thể lưu cache giọng mẫu tùy chỉnh vào LocalStorage:", lsErr);
         }
@@ -1455,14 +1557,15 @@ export default function AudioStudio({
         // Save/Cache the custom generated sample back to Firestore so future playbacks bypass the API
         if (db) {
           try {
-            await setDoc(doc(db, "voice_samples", matchedVoice.id), {
+            await setDoc(doc(db, "voice_samples", cacheKey), {
               voiceId: matchedVoice.id,
+              cacheKey: cacheKey,
               audioBase64: data.audioBase64,
               mimeType: mimeType,
               sampleText: independentSampleText,
               createdAt: new Date().toISOString()
             });
-            console.log(`[Firebase Cache Saved] Custom premium voice sample for ${matchedVoice.id} saved to Firestore!`);
+            console.log(`[Firebase Cache Saved] Custom premium voice sample for ${matchedVoice.id} (${cacheKey}) saved to Firestore!`);
             setCachedVoiceIds(prev => prev.includes(matchedVoice.id) ? prev : [...prev, matchedVoice.id]);
           } catch (saveErr) {
             console.warn("Lỗi lưu cache giọng nói vào Firestore:", saveErr);

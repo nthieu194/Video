@@ -1,0 +1,44 @@
+
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fav_blue" x1="160" y1="120" x2="360" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#00C6FF" />
+      <stop offset="45%" stopColor="#0B5CFF" />
+      <stop offset="100%" stopColor="#003ECC" />
+    </linearGradient>
+    <linearGradient id="fav_clapper" x1="200" y1="100" x2="340" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#38BDF8" />
+      <stop offset="100%" stopColor="#0284C7" />
+    </linearGradient>
+    <linearGradient id="fav_speed" x1="120" y1="180" x2="240" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#FFC107" />
+      <stop offset="60%" stopColor="#FF7A00" />
+      <stop offset="100%" stopColor="#FF3D00" />
+    </linearGradient>
+    <filter id="fav_shadow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" floodColor="#0B5CFF" floodOpacity="0.3" />
+    </filter>
+  </defs>
+
+  <g filter="url(#fav_shadow)">
+    <!-- Speed Lines -->
+    <rect x="110" y="196" width="70" height="18" rx="9" fill="url(#fav_speed)" />
+    <rect x="90" y="232" width="94" height="20" rx="10" fill="url(#fav_speed)" />
+    <rect x="110" y="270" width="70" height="18" rx="9" fill="url(#fav_speed)" />
+
+    <!-- Clapper Arm -->
+    <g transform="rotate(-15 190 140)">
+      <rect x="180" y="105" width="150" height="36" rx="10" fill="url(#fav_clapper)" />
+      <path d="M216 105 L202 141 H220 L234 105 Z" fill="#FFFFFF" />
+      <path d="M256 105 L242 141 H260 L274 105 Z" fill="#FFFFFF" />
+      <path d="M296 105 L282 141 H300 L314 105 Z" fill="#FFFFFF" />
+      <circle cx="192" cy="123" r="7" fill="#FFFFFF" />
+    </g>
+
+    <!-- Play Body -->
+    <path d="M200 160 C200 146 215.5 137.5 227.5 145 L350 220 C362 227.5 362 244.5 350 252 L227.5 327 C215.5 334.5 200 326 200 312 Z" fill="url(#fav_blue)" />
+
+    <!-- Play Hole -->
+    <path d="M232 195 C232 190 237.5 187 242 189.5 L298 224 C302.5 226.5 302.5 233 298 235.5 L242 270 C237.5 272.5 232 269.5 232 264.5 Z" fill="#FFFFFF" />
+  </g>
+</svg>

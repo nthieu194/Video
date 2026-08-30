@@ -59,8 +59,11 @@ import { IdeaMixer } from "./components/IdeaMixer";
 import IdeaBank from "./components/IdeaBank";
 import BillingStudio from "./components/BillingStudio";
 import AdminStudio from "./components/AdminStudio";
+import ImageStudio from "./components/ImageStudio";
+import VideoStudio from "./components/VideoStudio";
 import ClipViralLogo, { ClipViralLogoIcon, ClipViralAppIconBadge } from "./components/ClipViralLogo";
-import { ShieldCheck } from "lucide-react";
+import { PWAInstallBanner } from "./components/PWAInstallBanner";
+import { ShieldCheck, Clapperboard } from "lucide-react";
 
 
 // Firebase integration services
@@ -273,7 +276,7 @@ const DURATION_PRESETS = [
 
 export default function App() {
   // Navigation & View state
-  const [activeTab, setActiveTab ] = useState<"create" | "library" | "academy" | "planner" | "media" | "trends" | "prompter" | "audio" | "ideabank" | "billing" | "admin">("create");
+  const [activeTab, setActiveTab ] = useState<"create" | "image" | "video" | "library" | "academy" | "planner" | "media" | "trends" | "prompter" | "audio" | "ideabank" | "billing" | "admin">("create");
   const [trendsSubTab, setTrendsSubTab] = useState<"ideas" | "academy">("ideas");
 
   // Script Generator Form state
@@ -3186,11 +3189,13 @@ ${environmentVibeStr}
           <div className="lg:hidden bg-[#091E42] border-b border-[#1E293B] p-3 space-y-1.5 z-40 shadow-xl" id="mobile-expandable-menu">
             {[
               { tab: "create", label: "1. Tạo Kịch Bản Video AI", icon: Sparkles },
-              { tab: "prompter", label: "2. Viết Thoại & Máy Nhắc Bài", icon: Tv },
-              { tab: "audio", label: "3. Lồng Tiếng AI Studio", icon: Headphones },
-              { tab: "ideabank", label: "4. Ý Tưởng Hot Trend", icon: Database },
-              { tab: "planner", label: "5. Lịch Đăng Video", icon: Calendar },
-              { tab: "library", label: "6. Thư Viện Của Tôi", icon: Folder, badge: savedScripts.length + savedDialogues.length + savedAudios.length + savedAnalyses.length },
+              { tab: "image", label: "2. Tạo Ảnh AI (Gemini 3.1)", icon: ImageIcon },
+              { tab: "video", label: "3. Làm Phim & Video (Veo 3.1)", icon: Video },
+              { tab: "prompter", label: "4. Viết Thoại & Máy Nhắc Bài", icon: Tv },
+              { tab: "audio", label: "5. Lồng Tiếng AI Studio", icon: Headphones },
+              { tab: "ideabank", label: "6. Ý Tưởng Hot Trend", icon: Database },
+              { tab: "planner", label: "7. Lịch Đăng Video", icon: Calendar },
+              { tab: "library", label: "8. Thư Viện Của Tôi", icon: Folder, badge: savedScripts.length + savedDialogues.length + savedAudios.length + savedAnalyses.length },
               { tab: "billing", label: "💎 Nâng Cấp VIP", icon: CreditCard },
               ...((userProfile?.email === "nthieu194@gmail.com" || userProfile?.email === "nguyentronghieu1941989@gmail.com") ? [{ tab: "admin", label: "⚙️ Quản Trị Hệ Thống", icon: ShieldCheck }] : []),
             ].map((item) => {
@@ -3256,6 +3261,30 @@ ${environmentVibeStr}
             </button>
 
             <button
+              onClick={() => setActiveTab("image")}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === "image" 
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <ImageIcon size={18} className={activeTab === "image" ? "text-white" : "text-cyan-400"} />
+              <span>2. Tạo Ảnh AI (Gemini 3.1)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("video")}
+              className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === "video" 
+                  ? "bg-gradient-to-r from-[#0B5CFF] to-[#00C6FF] text-white shadow-lg shadow-[#0B5CFF]/30 font-bold" 
+                  : "text-slate-300 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Video size={18} className={activeTab === "video" ? "text-white" : "text-indigo-400"} />
+              <span>3. Làm Phim (Veo 3.1)</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("prompter")}
               className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
                 activeTab === "prompter" 
@@ -3264,7 +3293,7 @@ ${environmentVibeStr}
               }`}
             >
               <Tv size={18} className={activeTab === "prompter" ? "text-white" : "text-[#FF7A00]"} />
-              <span>2. Nhắc Chữ & Lời Thoại</span>
+              <span>4. Nhắc Chữ & Lời Thoại</span>
             </button>
 
             <button
@@ -3276,7 +3305,7 @@ ${environmentVibeStr}
               }`}
             >
               <Headphones size={18} className={activeTab === "audio" ? "text-white" : "text-purple-400"} />
-              <span>3. Lồng Tiếng AI Studio</span>
+              <span>5. Lồng Tiếng AI Studio</span>
             </button>
 
             <button
@@ -3288,7 +3317,7 @@ ${environmentVibeStr}
               }`}
             >
               <Database size={18} className={activeTab === "ideabank" ? "text-white" : "text-amber-400"} />
-              <span>4. Ý Tưởng Hot Trend</span>
+              <span>6. Ý Tưởng Hot Trend</span>
             </button>
 
             <button
@@ -3300,7 +3329,7 @@ ${environmentVibeStr}
               }`}
             >
               <Calendar size={18} className={activeTab === "planner" ? "text-white" : "text-emerald-400"} />
-              <span>5. Lịch Đăng Video</span>
+              <span>7. Lịch Đăng Video</span>
             </button>
 
             <button
@@ -3319,7 +3348,7 @@ ${environmentVibeStr}
                   </span>
                 )}
               </div>
-              <span>6. Thư Viện Của Tôi</span>
+              <span>8. Thư Viện Của Tôi</span>
             </button>
 
             <button
@@ -3368,6 +3397,8 @@ ${environmentVibeStr}
             <div className="min-w-0">
               <h1 className="text-lg lg:text-xl font-bold font-display text-[#1A1B2E] truncate">
                 {activeTab === "create" && "Tạo Kịch Bản Video AI Cực Nhanh"}
+                {activeTab === "image" && "Tạo ảnh AI"}
+                {activeTab === "video" && "Làm Phim & Video AI (Google DeepMind Veo 3.1)"}
                 {activeTab === "ideabank" && "Kho Ý Tưởng & Chủ Đề Theo Ngành"}
                 {activeTab === "prompter" && "Máy Nhắc Chữ & Sửa Lời Thoại Video"}
                 {activeTab === "audio" && "Lồng Tiếng AI & Đọc Văn Bản Thành Giọng Nói"}
@@ -3379,6 +3410,8 @@ ${environmentVibeStr}
               </h1>
               <p className="text-xs text-slate-500 truncate hidden sm:block">
                 {activeTab === "create" && "Dành cho người mới: Chọn mẫu sẵn hoặc nhập 1 dòng ý tưởng để AI viết kịch bản hoàn chỉnh"}
+                {activeTab === "image" && "Mô hình Gemini 3.1 Flash Lite Image siêu tốc độ & tiết kiệm chi phí, hỗ trợ vẽ ảnh độc lập và đồng bộ kịch bản"}
+                {activeTab === "video" && "Mô hình Google DeepMind Veo 3.1 Lite kết xuất video chuyển động mượt mà từ văn bản hoặc ảnh, hỗ trợ dựng phim kịch bản"}
                 {activeTab === "ideabank" && "200+ ý tưởng thu hút người xem được phân loại theo từng ngành hàng kinh doanh"}
                 {activeTab === "prompter" && "Máy nhắc chữ chạy tự động trên màn hình giúp bạn quay video mượt mà không lo quên bài"}
                 {activeTab === "audio" && "Chọn giọng đọc truyền cảm, đa cảm xúc để lồng tiếng tự động cho video chỉ trong 5 giây"}
@@ -6956,6 +6989,70 @@ ${environmentVibeStr}
               </div>
             )}
 
+            {/* TAB: TẠO ẢNH NGHỆ THUẬT AI (GEMINI 3.1 FLASH LITE) */}
+            {activeTab === "image" && (
+              <div className="max-w-7xl mx-auto animate-fade-in" id="image-tab-workspace">
+                <ImageStudio 
+                  savedScripts={savedScripts}
+                  activeScript={activeScript}
+                  userProfile={userProfile}
+                  setActiveTab={setActiveTab}
+                  onCheckAuthForAI={checkAuthForAI}
+                  onShowQuotaModal={(msg, title, badge) => {
+                    triggerQuotaLimitModal({
+                      title: title || "🔒 Khóa Quyền - Yêu Cầu STUDIO MASTER",
+                      badge: badge || "GÓI DOANH NGHIỆP / AGENCY",
+                      message: msg,
+                      limitDetail: "Studio Tạo Ảnh Gemini Flash 3.1"
+                    });
+                  }}
+                  onSelectImageForScriptScene={(sceneIndex, imageUrl) => {
+                    if (activeScript && activeScript.scenes && activeScript.scenes[sceneIndex]) {
+                      const updatedScenes = [...activeScript.scenes];
+                      updatedScenes[sceneIndex] = {
+                        ...updatedScenes[sceneIndex],
+                        imageUrl: imageUrl
+                      };
+                      const updatedScript = {
+                        ...activeScript,
+                        scenes: updatedScenes,
+                        updatedAt: new Date().toISOString()
+                      };
+                      setActiveScript(updatedScript);
+                      setSuccessMsg(`📸 Đã gắn ảnh AI tạo được vào Phân cảnh ${sceneIndex + 1} của kịch bản!`);
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {/* TAB: LÀM PHIM & VIDEO AI (OMNI FLASH 1.1 & GOOGLE VEO 3.1) */}
+            {activeTab === "video" && (
+              <div className="max-w-7xl mx-auto animate-fade-in" id="video-tab-workspace">
+                <VideoStudio 
+                  savedScripts={savedScripts}
+                  activeScript={activeScript}
+                  userProfile={userProfile}
+                  setActiveTab={setActiveTab}
+                  onNavigateToAudioStudio={(scriptId) => {
+                    if (scriptId) {
+                      const found = savedScripts.find(s => s.id === scriptId);
+                      if (found) setActiveScript(found);
+                    }
+                    setActiveTab("audio");
+                  }}
+                  onShowQuotaModal={(msg, title, badge) => {
+                    triggerQuotaLimitModal({
+                      title: title || "🔒 Khóa Quyền - Yêu Cầu STUDIO MASTER",
+                      badge: badge || "GÓI DOANH NGHIỆP / AGENCY",
+                      message: msg,
+                      limitDetail: "Studio Làm Phim Omni Flash 1.1 & Google Veo"
+                    });
+                  }}
+                />
+              </div>
+            )}
+
             {/* TAB: KHO Ý TƯỞNG (IDEA REPOSITORY) */}
             {activeTab === "ideabank" && (
               <div className="max-w-7xl mx-auto animate-fade-in" id="ideabank-tab-workspace">
@@ -7638,6 +7735,9 @@ ${environmentVibeStr}
 
         </main>
       </div>
+
+      {/* PWA Install Notification & iOS Add to Home Screen Modal */}
+      <PWAInstallBanner />
     </div>
   );
 }
